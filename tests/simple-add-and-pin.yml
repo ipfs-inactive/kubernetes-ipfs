@@ -1,0 +1,54 @@
+name: Simple Add and Pin
+config:
+  nodes: 5
+  times: 200
+  grace_shutdown: 10
+steps:
+  - name: Add file
+    on_node: 1
+    cmd: head -c 10 /dev/urandom | base64 > /tmp/file.txt && cat /tmp/file.txt && ipfs add -q /tmp/file.txt
+    outputs: 
+    - line: 0
+      save_to: FILE
+    - line: 1
+      save_to: HASH
+
+  - name: Pin file on node 2
+    on_node: 2
+    inputs:
+      - FILE
+      - HASH
+    cmd: ipfs pin add $HASH > /dev/null && ipfs cat $HASH # Cmd for retrieving a hash, comes from env vars
+    assertions:
+    - line: 0
+      should_be_equal_to: FILE
+
+  - name: Pin file on node 3
+    on_node: 3
+    inputs:
+      - FILE
+      - HASH
+    cmd: ipfs pin add $HASH > /dev/null && ipfs cat $HASH
+    assertions:
+    - line: 0
+      should_be_equal_to: FILE
+
+  - name: Pin file on node 4
+    on_node: 4
+    inputs:
+      - FILE
+      - HASH
+    cmd: ipfs pin add $HASH > /dev/null && ipfs cat $HASH
+    assertions:
+    - line: 0
+      should_be_equal_to: FILE
+
+  - name: Pin file
+    on_node: 5
+    inputs:
+      - FILE
+      - HASH
+    cmd: ipfs pin add $HASH > /dev/null && ipfs cat $HASH
+    assertions:
+    - line: 0
+      should_be_equal_to: FILE

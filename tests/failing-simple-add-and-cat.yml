@@ -1,0 +1,22 @@
+name: Simple Add and Cat
+config:
+  nodes: 2
+  times: 1
+steps:
+  - name: Add file
+    on_node: 1
+    cmd: head -c 10 /dev/urandom | base64 > /tmp/file.txt && cat /tmp/file.txt && ipfs add -q /tmp/file.txt
+    outputs: 
+    - line: 0
+      save_to: FILE
+    - line: 1
+      save_to: HASH
+  - name: Cat file
+    on_node: 2
+    inputs:
+      - FILE
+      - HASH
+    cmd: ipfs cat QmTYh7LVp8ZVZ4M3xbaNYUK522Tm5eDGroSgeHuSTMva3s
+    assertions:
+    - line: 0
+      should_be_equal_to: FILE

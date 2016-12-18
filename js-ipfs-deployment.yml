@@ -1,0 +1,25 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: js-ipfs-stress
+spec:
+  replicas: 2
+  template:
+    metadata:
+      labels:
+        run: js-ipfs-stress
+    spec:
+      containers:
+      - name: js-ipfs
+        image: "victorbjelkholm/js-ipfs:options"
+        command: ["/usr/src/app/start-daemon.sh"]
+        ports:
+        - containerPort: 4002
+          name: "swarm"
+          protocol: "TCP"
+        - containerPort: 5002
+          name: "api"
+          protocol: "TCP"
+        - containerPort: 9090
+          name: "gateway"
+          protocol: "TCP"
