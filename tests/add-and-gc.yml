@@ -1,0 +1,19 @@
+name: Simple Add and Cat
+config:
+  nodes: 1
+  times: 100
+steps:
+  - name: Add file
+    on_node: 1
+    cmd: head -c 10 /dev/urandom | base64 | ipfs add -q /tmp/file.txt
+    outputs: 
+    - line: 1
+      save_to: HASH
+  - name: Rm Pin file
+    on_node: 1
+    inputs:
+      - HASH
+    cmd: ipfs cat $HASH
+  - name: Run GC
+    on_node: 1
+    cmd: ipfs repo gc

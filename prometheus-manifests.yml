@@ -1,4 +1,4 @@
-# Derived from ./manifests
+# From https://github.com/giantswarm/kubernetes-prometheus/blob/0298afd9cbd4a3a6437ba9736fb1b27078008ec5/manifests-all.yaml
 ---
 apiVersion: v1
 kind: Namespace
