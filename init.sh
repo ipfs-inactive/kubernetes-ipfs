@@ -1,5 +1,7 @@
 #! /bin/bash
 
+set -ex
+
 echo "Create Monitoring"
 kubectl create -f ./prometheus-manifests.yml
 
