@@ -2,6 +2,12 @@ apiVersion: extensions/v1beta1
 kind: Deployment
 metadata:
   name: go-ipfs-stress
+  labels:
+    name: go-ipfs
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "5001"
+    prometheus.io/path: "debug/metrics/prometheus"
 spec:
   replicas: 2
   template:
@@ -16,4 +22,7 @@ spec:
         ports:
         - containerPort: 4001
           name: "swarm"
+          protocol: "TCP"
+        - containerPort: 5001
+          name: "api"
           protocol: "TCP"
