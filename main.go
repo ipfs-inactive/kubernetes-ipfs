@@ -95,6 +95,11 @@ type GetPodsOutput struct {
 	Items []Pod `json:"items"`
 }
 
+func fatal(i interface{}) {
+	fmt.Fprintln(os.Stderr, i)
+	os.Exit(1)
+}
+
 func main() {
 	if len(os.Args) != 2 {
 		fmt.Println("Usage: ", os.Args[0], "<testfile>")
@@ -102,22 +107,39 @@ func main() {
 	}
 	filePath := os.Args[1]
 	debug("## Loading " + filePath)
+
 	fileData, err := ioutil.ReadFile(filePath)
-	handleErr(err)
-	test := Test{}
-	summary := Summary{Successes: 0, Failures: 0, TestsRan: 0, Timeouts: 0}
+	if err != nil {
+		fatal(err)
+	}
+
+	var test Test
+	var summary Summary
+
 	err = yaml.Unmarshal([]byte(fileData), &test)
+	if err != nil {
+		fatal(err)
+	}
+
 	debug("Configuration:")
 	debugSpew(test)
-	handleErr(err)
+
 	summary.TestsToRun = test.Config.Times
 	summary.Start = time.Now()
+
 	for i := 0; i < test.Config.Times; i++ {
 		color.Cyan("## Running test '" + test.Name + "'")
-		pods := getPods()
+		pods, err := getPods()
+		if err != nil {
+			fatal(err)
+		}
+
 		if test.Config.Nodes > len(pods.Items) {
 			fmt.Println("Not enough nodes... Scaling up (pausing for", SLEEP_TIME, "seconds)")
-			scaleTo(test.Config.Nodes)
+			err := scaleTo(test.Config.Nodes)
+			if err != nil {
+				fatal(err)
+			}
 		}
 		color.Cyan("## Starting " + strconv.Itoa(test.Config.Nodes) + " nodes for this test")
 		env := make([]string, 0)
@@ -230,26 +252,42 @@ func main() {
 	os.Exit(evaluateOutcome(summary, test.Config.Expected)) // Returns success on all tests to OS; this allows for test scripting.
 }
 
-func getPods() GetPodsOutput {
+func getPods() (*GetPodsOutput, error) {
 	// Only return pods that match our deployment.
 	cmd := exec.Command("kubectl", "get", "pods", "--output=json", "--selector=run="+DEPLOYMENT_NAME)
-	var out bytes.Buffer
-	cmd.Stdout = &out
+
+	out := new(bytes.Buffer)
+	errout := new(bytes.Buffer)
+	cmd.Stdout = out
+	cmd.Stderr = errout
+
 	err := cmd.Run()
-	handleErr(err)
-	pods := GetPodsOutput{}
-	err = json.Unmarshal(out.Bytes(), &pods)
-	handleErr(err)
-	return pods
+	if err != nil {
+		return nil, fmt.Errorf("get pods error: %s %s %s", err, errout.String(), out.String())
+	}
+
+	pods := new(GetPodsOutput)
+	err = json.Unmarshal(out.Bytes(), pods)
+	if err != nil {
+		return nil, err
+	}
+
+	return pods, nil
 }
 
 // Scale the k8s deployment to the size required for the tests.
-func scaleTo(number int) {
+func scaleTo(number int) error {
 	cmd := exec.Command("kubectl", "scale", "--replicas="+strconv.Itoa(number), "deployment/"+DEPLOYMENT_NAME)
 	fmt.Println("Sleeping", SLEEP_TIME, "seconds...")
 	time.Sleep(time.Duration(SLEEP_TIME) * time.Second)
+	errbuf := new(bytes.Buffer)
+	cmd.Stderr = errbuf
 	err := cmd.Run()
-	handleErr(err)
+	if err != nil {
+		return fmt.Errorf(errbuf.String())
+	}
+
+	return nil
 }
 
 func runInPodAsync(name string, cmdToRun string, env []string, timeout int, chanStrings chan []string, chanTimeout chan bool) {
@@ -336,13 +374,6 @@ func runInPod(name string, cmdToRun string, env []string, timeout int) ([]string
 	return lines[:len(lines)-1], timeout_reached
 }
 
-func handleErr(err interface{}) {
-	if err != nil {
-		fmt.Println(err)
-		panic(err)
-	}
-}
-
 func debug(str string) {
 	debugEnvVar := os.Getenv("DEBUG")
 	if debugEnvVar != "" {
@@ -399,12 +430,12 @@ func evaluateOutcome(summary Summary, expected Expected) int {
 		fmt.Println("Expectations were not met")
 		color.Unset()
 		return 1
-	} else {
-		color.Set(color.FgGreen)
-		fmt.Println("Expectations were met")
-		color.Unset()
-		return 0
 	}
+
+	color.Set(color.FgGreen)
+	fmt.Println("Expectations were met")
+	color.Unset()
+	return 0
 }
 
 func unixToStr(i int64) string {
