@@ -1,0 +1,29 @@
+name: Swarm downloading a small file
+config:
+  nodes: 11
+  times: 3
+  expected:
+      successes: 30
+      failures: 0
+      timeouts: 0
+steps:
+  - name: Create 5MB File
+    on_node: 1
+    cmd: head -c 5000000 /dev/urandom | base64 > /tmp/file.txt && md5sum /tmp/file.txt | cut -d ' ' -f 1 && ipfs add -q /tmp/file.txt
+    timeout: 0
+    outputs: 
+    - line: 0
+      save_to: FILE
+    - line: 1
+      save_to: HASH
+  - name: Cat file on node 2-11
+    on_node: 2
+    end_node: 11
+    inputs:
+      - FILE
+      - HASH
+    cmd: ipfs cat $HASH | md5sum | cut -d ' ' -f 1
+    timeout: 10
+    assertions:
+    - line: 0
+      should_be_equal_to: FILE

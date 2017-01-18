@@ -1,8 +1,12 @@
 name: Simple Add and Pin
 config:
   nodes: 5
-  times: 200
+  times: 25
   grace_shutdown: 10
+  expected:
+      successes: 100 # There are four assertions for each time
+      failures: 0
+      timeouts: 0
 steps:
   - name: Add file
     on_node: 1

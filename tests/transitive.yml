@@ -1,6 +1,6 @@
-name: Simple Add and Cat on 2 Node
+name: Transitive
 config:
-  nodes: 2
+  nodes: 3
   times: 10
   expected:
       successes: 10
@@ -16,8 +16,22 @@ steps:
       save_to: FILE
     - line: 1
       save_to: HASH
-  - name: Cat file
+  - name: Pin added file on node 2
     on_node: 2
+    timeout: 10
+    inputs:
+      - HASH
+    cmd: ipfs pin add $HASH
+  - name: Remove Pin on node 1
+    on_node: 1
+    inputs:
+      - HASH
+    cmd: ipfs pin rm $HASH
+  - name: Run GC on node 1
+    on_node: 1
+    cmd: ipfs repo gc
+  - name: Cat file on node 3
+    on_node: 3
     inputs:
       - FILE
       - HASH

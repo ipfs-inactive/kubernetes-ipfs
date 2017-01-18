@@ -1,0 +1,53 @@
+name: Moving a medium-sized file across the internet
+config:
+  nodes: 4
+  times: 3
+  expected:
+      successes: 6
+      failures: 0
+      timeouts: 0
+steps:
+  - name: Create 200MB File
+    on_node: 1
+    cmd: head -c 200000000 /dev/urandom | base64 > /tmp/file.txt && md5sum /tmp/file.txt | cut -d ' ' -f 1 && ipfs add -q /tmp/file.txt
+    timeout: 0
+    outputs: 
+    - line: 0
+      save_to: FILE
+    - line: 1
+      save_to: HASH
+  - name: Cat file on node 2
+    on_node: 2
+    inputs:
+      - FILE
+      - HASH
+    cmd: ipfs cat $HASH | md5sum | cut -d ' ' -f 1
+    timeout: 40
+    assertions:
+    - line: 0
+      should_be_equal_to: FILE
+  - name: Cat file on node 3
+    on_node: 3
+    inputs:
+      - FILE
+      - HASH
+    cmd: ipfs cat $HASH | md5sum | cut -d ' ' -f 1
+    timeout: 40
+    assertions:
+    - line: 0
+      should_be_equal_to: FILE
+  - name: Run GC on node 2
+    on_node: 2
+    cmd: ipfs repo gc
+    inputs:
+      - HASH
+  - name: Run GC on node 3
+    on_node: 3
+    cmd: ipfs repo gc
+    inputs:
+      - HASH
+  - name: Remove pin and run GC on node 1
+    on_node: 1
+    cmd: ipfs pin rm $HASH && ipfs repo gc
+    inputs:
+      - HASH

@@ -1,26 +1,36 @@
-name: Failing Simple Add and Cat
+name: Failing - Not Present
 config:
   nodes: 2
   times: 10
   expected:
       successes: 0
-      failures: 10
-      timeouts: 0
+      failures: 0
+      timeouts: 10
 steps:
   - name: Add file
     on_node: 1
     cmd: head -c 10 /dev/urandom | base64 > /tmp/file.txt && cat /tmp/file.txt && ipfs add -q /tmp/file.txt
+    timeout: 0
     outputs: 
     - line: 0
       save_to: FILE
     - line: 1
       save_to: HASH
-  - name: Cat file
+  - name: Remove Pin on node 1
+    on_node: 1
+    inputs:
+      - HASH
+    cmd: ipfs pin rm $HASH
+  - name: Run GC on node 1
+    on_node: 1
+    cmd: ipfs repo gc
+  - name: Cat file on node 2
     on_node: 2
     inputs:
       - FILE
       - HASH
-    cmd: ipfs cat /ipfs/QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG/readme # Using the readme from the docs
+    cmd: ipfs cat $HASH
+    timeout: 2 
     assertions:
     - line: 0
       should_be_equal_to: FILE
