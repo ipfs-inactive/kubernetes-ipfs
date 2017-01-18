@@ -20,6 +20,12 @@ import (
 // DEBUG decides if we should have debug output enabled or not
 var DEBUG = false
 
+// The k8s deployment name; this is what we use to select pods and scale the deployment.
+var DEPLOYMENT_NAME = "go-ipfs-stress"
+
+// How long to sleep after scaling the containers up. TODO: Just check for "Running" status.
+var SLEEP_TIME = 15
+
 // Summary is
 type Summary struct {
 	Start      time.Time
@@ -28,6 +34,7 @@ type Summary struct {
 	Failures   int
 	TestsToRun int
 	TestsRan   int
+	Timeouts   int
 }
 
 // Output is
@@ -46,7 +53,9 @@ type Assertion struct {
 type Step struct {
 	Name       string      `yaml:"name"`
 	OnNode     int         `yaml:"on_node"`
+	EndNode    int         `yaml:"end_node"`
 	CMD        string      `yaml:"cmd"`
+	Timeout    int         `yaml:"timeout"`
 	Outputs    []Output    `yaml:"outputs"`
 	Inputs     []string    `yaml:"inputs"`
 	Assertions []Assertion `yaml:"assertions"`
@@ -57,6 +66,14 @@ type Config struct {
 	Nodes         int           `yaml:"nodes"`
 	Times         int           `yaml:"times"`
 	GraceShutdown time.Duration `yaml:"grace_shutdown"`
+	Expected      Expected      `yaml:"expected"`
+}
+
+// Expected is
+type Expected struct {
+	Successes int `yaml:"successes"`
+	Failures  int `yaml:"failures"`
+	Timeouts  int `yaml:"timeouts"`
 }
 
 // Test is
@@ -80,7 +97,7 @@ type GetPodsOutput struct {
 
 func main() {
 	if len(os.Args) != 2 {
-		fmt.Println("Usage: kubernetes-ipfs <testfile>")
+		fmt.Println("Usage: ", os.Args[0], "<testfile>")
 		os.Exit(1)
 	}
 	filePath := os.Args[1]
@@ -88,7 +105,7 @@ func main() {
 	fileData, err := ioutil.ReadFile(filePath)
 	handleErr(err)
 	test := Test{}
-	summary := Summary{Successes: 0, Failures: 0, TestsRan: 0}
+	summary := Summary{Successes: 0, Failures: 0, TestsRan: 0, Timeouts: 0}
 	err = yaml.Unmarshal([]byte(fileData), &test)
 	debug("Configuration:")
 	debugSpew(test)
@@ -97,10 +114,12 @@ func main() {
 	summary.Start = time.Now()
 	for i := 0; i < test.Config.Times; i++ {
 		color.Cyan("## Running test '" + test.Name + "'")
-		color.Cyan("## Starting " + strconv.Itoa(test.Config.Nodes) + " nodes for this test")
 		pods := getPods()
-		debug("First pod: " + pods.Items[0].Metadata.Name)
-		debug("Second pod: " + pods.Items[1].Metadata.Name)
+		if test.Config.Nodes > len(pods.Items) {
+			fmt.Println("Not enough nodes... Scaling up (pausing for", SLEEP_TIME, "seconds)")
+			scaleTo(test.Config.Nodes)
+		}
+		color.Cyan("## Starting " + strconv.Itoa(test.Config.Nodes) + " nodes for this test")
 		env := make([]string, 0)
 		for _, step := range test.Steps {
 			color.Blue("### Running step '" + step.Name + "' on node " + strconv.Itoa(step.OnNode))
@@ -110,7 +129,65 @@ func main() {
 				}
 			}
 			color.Magenta("$ " + step.CMD)
-			out := runInPod(pods.Items[step.OnNode-1].Metadata.Name, step.CMD, env)
+			// Test whether we want to run this test in parallel
+			if step.EndNode != 0 {
+				numNodes := step.EndNode - step.OnNode
+				color.Magenta("Running parallel on", numNodes, "nodes.")
+				// Initialize a channel with depth of number of nodes we're testing on simultaneously
+				outputStrings := make(chan []string, numNodes)
+				outputErr := make(chan bool, numNodes)
+				for j := step.OnNode; j < step.EndNode; j++ {
+					// Hand this channel to the pod runner and let it fill the queue
+					runInPodAsync(pods.Items[step.OnNode-1].Metadata.Name, step.CMD, env, step.Timeout, outputStrings, outputErr)
+				}
+				// Iterate through the queue to pull out results one-by-one
+				// These may be out of order, but is there a better way to do this? Do we need them in order?
+				// TODO: Find a way to reduce the duplicated code here.
+				for j := step.OnNode; j < step.EndNode; j++ {
+					out := <-outputStrings
+					err := <-outputErr
+					if err {
+						summary.Timeouts++
+						continue // skip handling the output or other assertions since it timed out.
+					}
+					if len(step.Outputs) != 0 {
+						for index, output := range step.Outputs {
+							color.Magenta("### Saving output from line " + strconv.Itoa(output.Line) + " to variable " + output.SaveTo)
+							line := out[index]
+							env = append(env, output.SaveTo+"="+line)
+						}
+					}
+					if len(step.Assertions) != 0 {
+						for _, assertion := range step.Assertions {
+							lineToAssert := out[assertion.Line]
+							value := ""
+							for _, e := range env {
+								if strings.Contains(e, assertion.ShouldBeEqualTo) {
+									value = e[len(assertion.ShouldBeEqualTo)+1:]
+									break
+								}
+							}
+							if lineToAssert != value {
+								color.Set(color.FgRed)
+								fmt.Println("Assertion failed!")
+								fmt.Println("Actual value=" + value)
+								fmt.Println("Expected value=" + lineToAssert)
+								color.Unset()
+								summary.Failures = summary.Failures + 1
+							} else {
+								summary.Successes = summary.Successes + 1
+								color.Green("Assertion Passed")
+							}
+							fmt.Println()
+						}
+					}
+				}
+			}
+			out, err := runInPod(pods.Items[step.OnNode-1].Metadata.Name, step.CMD, env, step.Timeout)
+			if err {
+				summary.Timeouts++
+				continue
+			}
 			if len(step.Outputs) != 0 {
 				for index, output := range step.Outputs {
 					color.Magenta("### Saving output from line " + strconv.Itoa(output.Line) + " to variable " + output.SaveTo)
@@ -150,10 +227,12 @@ func main() {
 	time.Sleep(test.Config.GraceShutdown * time.Second)
 	summary.End = time.Now()
 	printSummary(summary)
+	os.Exit(evaluateOutcome(summary, test.Config.Expected)) // Returns success on all tests to OS; this allows for test scripting.
 }
 
 func getPods() GetPodsOutput {
-	cmd := exec.Command("kubectl", "get", "pods", "--output=json")
+	// Only return pods that match our deployment.
+	cmd := exec.Command("kubectl", "get", "pods", "--output=json", "--selector=run="+DEPLOYMENT_NAME)
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	err := cmd.Run()
@@ -164,7 +243,62 @@ func getPods() GetPodsOutput {
 	return pods
 }
 
-func runInPod(name string, cmdToRun string, env []string) []string {
+// Scale the k8s deployment to the size required for the tests.
+func scaleTo(number int) {
+	cmd := exec.Command("kubectl", "scale", "--replicas="+strconv.Itoa(number), "deployment/"+DEPLOYMENT_NAME)
+	fmt.Println("Sleeping", SLEEP_TIME, "seconds...")
+	time.Sleep(time.Duration(SLEEP_TIME) * time.Second)
+	err := cmd.Run()
+	handleErr(err)
+}
+
+func runInPodAsync(name string, cmdToRun string, env []string, timeout int, chanStrings chan []string, chanTimeout chan bool) {
+	go func() {
+		var lines []string
+		defer func() {
+			chanStrings <- lines
+		}()
+		envString := ""
+		for _, e := range env {
+			envString = e + " "
+		}
+		if envString != "" {
+			envString = envString + "&& "
+		}
+		cmd := exec.Command("kubectl", "exec", name, "--", "bash", "-c", envString+cmdToRun)
+		var out bytes.Buffer
+		var errout bytes.Buffer
+		cmd.Stdout = &out
+		cmd.Stderr = &errout
+		cmd.Start()
+		timeout_reached := false
+
+		// Handle timeouts
+		if timeout != 0 {
+			timer := time.AfterFunc(time.Duration(timeout)*time.Second, func() {
+				cmd.Process.Kill()
+				timeout_reached = true
+				color.Set(color.FgRed)
+				fmt.Println("Command timed out after", timeout, "seconds")
+				color.Unset()
+			})
+			cmd.Wait()
+			timer.Stop()
+		} else {
+			cmd.Wait()
+		}
+
+		if errout.String() != "" {
+			fmt.Println(errout.String())
+		}
+		lines = strings.Split(out.String(), "\n")
+		// Feed our output into the channel.
+		chanStrings <- lines[:len(lines)-1]
+		chanTimeout <- timeout_reached
+	}()
+}
+
+func runInPod(name string, cmdToRun string, env []string, timeout int) ([]string, bool) {
 	envString := ""
 	for _, e := range env {
 		envString = e + " "
@@ -177,17 +311,34 @@ func runInPod(name string, cmdToRun string, env []string) []string {
 	var errout bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &errout
-	err := cmd.Run()
+	cmd.Start()
+	timeout_reached := false
+
+	// Handle timeouts
+	if timeout != 0 {
+		timer := time.AfterFunc(time.Duration(timeout)*time.Second, func() {
+			cmd.Process.Kill()
+			timeout_reached = true
+			color.Set(color.FgRed)
+			fmt.Println("Command timed out after", timeout, "seconds")
+			color.Unset()
+		})
+		cmd.Wait()
+		timer.Stop()
+	} else {
+		cmd.Wait()
+	}
+
 	if errout.String() != "" {
 		fmt.Println(errout.String())
 	}
-	handleErr(err)
 	lines := strings.Split(out.String(), "\n")
-	return lines[:len(lines)-1]
+	return lines[:len(lines)-1], timeout_reached
 }
 
 func handleErr(err interface{}) {
 	if err != nil {
+		fmt.Println(err)
 		panic(err)
 	}
 }
@@ -216,11 +367,44 @@ func printSummary(summary Summary) {
 	fmt.Println("==")
 	successes := strconv.Itoa(summary.Successes)
 	failures := strconv.Itoa(summary.Failures)
+	timeouts := strconv.Itoa(summary.Timeouts)
 	fmt.Println("== Successes: " + successes + "/" + failures + " (success/failure)")
-	// ?from=1482079531666&to=1482079674457
-	metricsLink := "http://192.168.99.101:30594/dashboard/db/kubernetes-pod-resources?from=" + unixToStr(summary.Start.Unix()) + "&to=" + unixToStr(summary.End.Unix())
-	fmt.Println("==")
-	fmt.Println("== Metrics: " + metricsLink)
+	fmt.Println("== Timeouts: " + timeouts)
+
+	// Get the grafana service dynamically; this will work even for real k8s deployments instead of just minikube
+	var port_out bytes.Buffer
+	port_cmd := exec.Command("kubectl", "get", "service", "grafana", "--namespace=monitoring", "-o", "jsonpath='{.spec.ports[0].nodePort}'")
+	port_cmd.Stdout = &port_out
+	port_cmd.Run()
+	// Ignore this error for now... We handle it in address_cmd
+
+	var address_out bytes.Buffer
+	address_cmd := exec.Command("kubectl", "get", "nodes", "-o", "jsonpath='{.items[0].status.addresses[?(@.type == \"InternalIP\")].address}'")
+	address_cmd.Stdout = &address_out
+	if address_cmd.Run() != nil {
+		// Use fallback address, we weren't able to get the
+		address := strings.Replace(address_out.String(), "'", "", -1)
+		port := strings.Replace(port_out.String(), "'", "", -1)
+
+		metricsLink := fmt.Sprintf("http://%s:%s", address, port)
+		metricsLink += "/dashboard/db/kubernetes-pod-resources?from=" + unixToStr(summary.Start.Unix()) + "&to=" + unixToStr(summary.End.Unix())
+		fmt.Println("==")
+		fmt.Println("== Metrics: " + metricsLink)
+	}
+}
+
+func evaluateOutcome(summary Summary, expected Expected) int {
+	if summary.Successes != expected.Successes || summary.Failures != expected.Failures || summary.Timeouts != expected.Timeouts {
+		color.Set(color.FgRed)
+		fmt.Println("Expectations were not met")
+		color.Unset()
+		return 1
+	} else {
+		color.Set(color.FgGreen)
+		fmt.Println("Expectations were met")
+		color.Unset()
+		return 0
+	}
 }
 
 func unixToStr(i int64) string {
