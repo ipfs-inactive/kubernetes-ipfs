@@ -23,9 +23,6 @@ var DEBUG = false
 // The k8s deployment name; this is what we use to select pods and scale the deployment.
 var DEPLOYMENT_NAME = "go-ipfs-stress"
 
-// How long to sleep after scaling the containers up. TODO: Just check for "Running" status.
-var SLEEP_TIME = 15
-
 // Summary is
 type Summary struct {
 	Start      time.Time
@@ -88,6 +85,9 @@ type Pod struct {
 	Metadata struct {
 		Name string `json:"name"`
 	} `json:"metadata"`
+	Status struct {
+		Phase string `json:"phase"`
+	} `json:"status"`
 }
 
 // GetPodsOutput is
@@ -134,8 +134,16 @@ func main() {
 			fatal(err)
 		}
 
-		if test.Config.Nodes > len(pods.Items) {
-			fmt.Println("Not enough nodes... Scaling up (pausing for", SLEEP_TIME, "seconds)")
+		// We'll check for running pods.
+		// In the event we ask the controller to scale, and the pods are just still starting
+		// e.g. If someone cancels the scale-up and restarts right after, then it'll just keep
+		// on doing the same thing.
+		running_nodes, err := getRunningPods()
+		if err != nil {
+			fatal(err)
+		}
+		if test.Config.Nodes > running_nodes {
+			fmt.Println("Not enough nodes running. Scaling up...")
 			err := scaleTo(test.Config.Nodes)
 			if err != nil {
 				fatal(err)
@@ -153,8 +161,8 @@ func main() {
 			color.Magenta("$ " + step.CMD)
 			// Test whether we want to run this test in parallel
 			if step.EndNode != 0 {
-				numNodes := step.EndNode - step.OnNode
-				color.Magenta("Running parallel on", numNodes, "nodes.")
+				numNodes := step.EndNode - step.OnNode + 1
+				color.Magenta("Running parallel on " + strconv.Itoa(numNodes) + " nodes.")
 				// Initialize a channel with depth of number of nodes we're testing on simultaneously
 				outputStrings := make(chan []string, numNodes)
 				outputErr := make(chan bool, numNodes)
@@ -275,18 +283,41 @@ func getPods() (*GetPodsOutput, error) {
 	return pods, nil
 }
 
+func getRunningPods() (int, error) {
+	pods, err := getPods()
+	if err != nil {
+		return 0, fmt.Errorf("%s\n", err)
+	}
+	current_number_running := 0
+	for _, pod := range pods.Items {
+		if pod.Status.Phase == "Running" {
+			current_number_running++
+		}
+	}
+	return current_number_running, nil
+}
+
 // Scale the k8s deployment to the size required for the tests.
 func scaleTo(number int) error {
+	fmt.Printf("Scaling in progress...\n")
 	cmd := exec.Command("kubectl", "scale", "--replicas="+strconv.Itoa(number), "deployment/"+DEPLOYMENT_NAME)
-	fmt.Println("Sleeping", SLEEP_TIME, "seconds...")
-	time.Sleep(time.Duration(SLEEP_TIME) * time.Second)
 	errbuf := new(bytes.Buffer)
 	cmd.Stderr = errbuf
 	err := cmd.Run()
 	if err != nil {
 		return fmt.Errorf(errbuf.String())
 	}
-
+	// Wait until the pods are in "ready" state
+	number_running := 0
+	for number_running < number {
+		number_running, err = getRunningPods()
+		if err != nil {
+			return err
+		}
+		fmt.Printf("\tContainers running (current/target): (%d/%d)\n", number_running, number)
+		time.Sleep(time.Duration(3) * time.Second)
+	}
+	fmt.Println("Scale complete")
 	return nil
 }
 
