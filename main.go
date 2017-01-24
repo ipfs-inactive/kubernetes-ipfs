@@ -129,7 +129,6 @@ func main() {
 
 	for i := 0; i < test.Config.Times; i++ {
 		color.Cyan("## Running test '" + test.Name + "'")
-		pods, err := getPods()
 		if err != nil {
 			fatal(err)
 		}
@@ -149,7 +148,8 @@ func main() {
 				fatal(err)
 			}
 		}
-		color.Cyan("## Starting " + strconv.Itoa(test.Config.Nodes) + " nodes for this test")
+		pods, err := getPods() // Get the pod list after a scale-up
+		color.Cyan("## Using " + strconv.Itoa(test.Config.Nodes) + " nodes for this test")
 		env := make([]string, 0)
 		for _, step := range test.Steps {
 			color.Blue("### Running step '" + step.Name + "' on node " + strconv.Itoa(step.OnNode))
