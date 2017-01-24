@@ -20,10 +20,9 @@ steps:
     on_node: 2
     end_node: 11
     inputs:
-      - FILE
       - HASH
     cmd: ipfs cat $HASH | md5sum | cut -d ' ' -f 1
-    timeout: 10
+    timeout: 25
     assertions:
     - line: 0
       should_be_equal_to: FILE
