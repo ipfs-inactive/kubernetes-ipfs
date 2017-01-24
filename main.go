@@ -329,7 +329,7 @@ func runInPodAsync(name string, cmdToRun string, env []string, timeout int, chan
 		}()
 		envString := ""
 		for _, e := range env {
-			envString = e + " "
+			envString += e + " "
 		}
 		if envString != "" {
 			envString = envString + "&& "
@@ -370,7 +370,7 @@ func runInPodAsync(name string, cmdToRun string, env []string, timeout int, chan
 func runInPod(name string, cmdToRun string, env []string, timeout int) ([]string, bool) {
 	envString := ""
 	for _, e := range env {
-		envString = e + " "
+		envString += e + " "
 	}
 	if envString != "" {
 		envString = envString + "&& "
