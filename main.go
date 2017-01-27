@@ -152,103 +152,7 @@ func main() {
 		color.Cyan("## Using " + strconv.Itoa(test.Config.Nodes) + " nodes for this test")
 		env := make([]string, 0)
 		for _, step := range test.Steps {
-			color.Blue("### Running step '" + step.Name + "' on node " + strconv.Itoa(step.OnNode))
-			if len(step.Inputs) != 0 {
-				for _, input := range step.Inputs {
-					color.Blue("### Getting variable " + input)
-				}
-			}
-			color.Magenta("$ " + step.CMD)
-			// Test whether we want to run this test in parallel
-			if step.EndNode != 0 {
-				numNodes := step.EndNode - step.OnNode + 1
-				color.Magenta("Running parallel on " + strconv.Itoa(numNodes) + " nodes.")
-				// Initialize a channel with depth of number of nodes we're testing on simultaneously
-				outputStrings := make(chan []string, numNodes)
-				outputErr := make(chan bool, numNodes)
-				for j := step.OnNode; j < step.EndNode; j++ {
-					// Hand this channel to the pod runner and let it fill the queue
-					runInPodAsync(pods.Items[step.OnNode-1].Metadata.Name, step.CMD, env, step.Timeout, outputStrings, outputErr)
-				}
-				// Iterate through the queue to pull out results one-by-one
-				// These may be out of order, but is there a better way to do this? Do we need them in order?
-				// TODO: Find a way to reduce the duplicated code here.
-				for j := step.OnNode; j < step.EndNode; j++ {
-					out := <-outputStrings
-					err := <-outputErr
-					if err {
-						summary.Timeouts++
-						continue // skip handling the output or other assertions since it timed out.
-					}
-					if len(step.Outputs) != 0 {
-						for index, output := range step.Outputs {
-							color.Magenta("### Saving output from line " + strconv.Itoa(output.Line) + " to variable " + output.SaveTo)
-							line := out[index]
-							env = append(env, output.SaveTo+"="+line)
-						}
-					}
-					if len(step.Assertions) != 0 {
-						for _, assertion := range step.Assertions {
-							lineToAssert := out[assertion.Line]
-							value := ""
-							for _, e := range env {
-								if strings.Contains(e, assertion.ShouldBeEqualTo) {
-									value = e[len(assertion.ShouldBeEqualTo)+1:]
-									break
-								}
-							}
-							if lineToAssert != value {
-								color.Set(color.FgRed)
-								fmt.Println("Assertion failed!")
-								fmt.Println("Actual value=" + value)
-								fmt.Println("Expected value=" + lineToAssert)
-								color.Unset()
-								summary.Failures = summary.Failures + 1
-							} else {
-								summary.Successes = summary.Successes + 1
-								color.Green("Assertion Passed")
-							}
-							fmt.Println()
-						}
-					}
-				}
-			}
-			out, err := runInPod(pods.Items[step.OnNode-1].Metadata.Name, step.CMD, env, step.Timeout)
-			if err {
-				summary.Timeouts++
-				continue
-			}
-			if len(step.Outputs) != 0 {
-				for index, output := range step.Outputs {
-					color.Magenta("### Saving output from line " + strconv.Itoa(output.Line) + " to variable " + output.SaveTo)
-					line := out[index]
-					env = append(env, output.SaveTo+"="+line)
-				}
-			}
-			if len(step.Assertions) != 0 {
-				for _, assertion := range step.Assertions {
-					lineToAssert := out[assertion.Line]
-					value := ""
-					for _, e := range env {
-						if strings.Contains(e, assertion.ShouldBeEqualTo) {
-							value = e[len(assertion.ShouldBeEqualTo)+1:]
-							break
-						}
-					}
-					if lineToAssert != value {
-						color.Set(color.FgRed)
-						fmt.Println("Assertion failed!")
-						fmt.Println("Actual value=" + value)
-						fmt.Println("Expected value=" + lineToAssert)
-						color.Unset()
-						summary.Failures = summary.Failures + 1
-					} else {
-						summary.Successes = summary.Successes + 1
-						color.Green("Assertion Passed")
-					}
-					fmt.Println()
-				}
-			}
+			env = handleStep(*pods, &step, &summary, env)
 		}
 		summary.TestsRan = summary.TestsRan + 1
 	}
@@ -258,6 +162,72 @@ func main() {
 	summary.End = time.Now()
 	printSummary(summary)
 	os.Exit(evaluateOutcome(summary, test.Config.Expected)) // Returns success on all tests to OS; this allows for test scripting.
+}
+
+func handleStep(pods GetPodsOutput, step *Step, summary *Summary, env []string) []string {
+	color.Blue("### Running step '" + step.Name + "' on node " + strconv.Itoa(step.OnNode))
+	if len(step.Inputs) != 0 {
+		for _, input := range step.Inputs {
+			color.Blue("### Getting variable " + input)
+		}
+	}
+	color.Magenta("$ " + step.CMD)
+	numNodes := 1
+	endNode := step.OnNode
+	if step.EndNode != 0 {
+		numNodes = step.EndNode - step.OnNode + 1
+		endNode = step.EndNode
+		color.Magenta("Running parallel on " + strconv.Itoa(numNodes) + " nodes.")
+	}
+	// Initialize a channel with depth of number of nodes we're testing on simultaneously
+	outputStrings := make(chan []string, numNodes)
+	outputErr := make(chan bool, numNodes)
+	for j := step.OnNode; j <= endNode; j++ {
+		// Hand this channel to the pod runner and let it fill the queue
+		runInPodAsync(pods.Items[step.OnNode-1].Metadata.Name, step.CMD, env, step.Timeout, outputStrings, outputErr)
+	}
+	// Iterate through the queue to pull out results one-by-one
+	// These may be out of order, but is there a better way to do this? Do we need them in order?
+	for j := step.OnNode; j <= endNode; j++ {
+		out := <-outputStrings
+		err := <-outputErr
+		if err {
+			summary.Timeouts++
+			continue // skip handling the output or other assertions since it timed out.
+		}
+		if len(step.Outputs) != 0 {
+			for index, output := range step.Outputs {
+				color.Magenta("### Saving output from line " + strconv.Itoa(output.Line) + " to variable " + output.SaveTo)
+				line := out[index]
+				env = append(env, output.SaveTo+"="+line)
+			}
+		}
+		if len(step.Assertions) != 0 {
+			for _, assertion := range step.Assertions {
+				lineToAssert := out[assertion.Line]
+				value := ""
+				for _, e := range env {
+					if strings.Contains(e, assertion.ShouldBeEqualTo) {
+						value = e[len(assertion.ShouldBeEqualTo)+1:]
+						break
+					}
+				}
+				if lineToAssert != value {
+					color.Set(color.FgRed)
+					fmt.Println("Assertion failed!")
+					fmt.Println("Actual value=" + value)
+					fmt.Println("Expected value=" + lineToAssert)
+					color.Unset()
+					summary.Failures = summary.Failures + 1
+				} else {
+					summary.Successes = summary.Successes + 1
+					color.Green("Assertion Passed")
+				}
+				fmt.Println()
+			}
+		}
+	}
+	return env
 }
 
 func getPods() (*GetPodsOutput, error) {
