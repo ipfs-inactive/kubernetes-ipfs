@@ -1,15 +1,18 @@
-> Experiment with setting up a Kubernetes
-> cluster with go-ipfs for e2e and stress testing
-
 # Get Started
 
-Have golang, minikube and kubectl installed on the machine.
+kubernetes-ipfs works with both a full kubernetes deployment, or the [minikube](https://kubernetes.io/docs/getting-started-guides/minikube/) all-in-one system
 
-`./reset-minikube.sh` to make sure you have a funky fresh install
+## With Minikube
+
+`./reset-minikube.sh` to set minikube up in a clean state
 
 `./init.sh` to create go-ipfs and grafana deployments on minikube
 
-`go run main.go tests/simple-add-and-cat.yml` and see it passing in the bottom
+## Running tests
+
+`go run main.go tests/simple-add-and-cat.yml` 
+
+The go application returns `0` when expectations were met, `1` when they failed
 
 # Example Reports
 
@@ -25,50 +28,24 @@ go-ipfs:v0.4.5-pre1 - https://snapshot.raintank.io/dashboard/snapshot/JteUjtvn3h
 
 go-ipfs:v0.4.5-pre1 - https://snapshot.raintank.io/dashboard/snapshot/DfHSuzIo3TNDrMmJedqmSMvFniGLIWwH
 
-# Manual instructions
+# Writing tests
 
-## Start local cluster
+The tests are specified in a .yml file for each test.
 
-```
-minikube start
+## Header
+* name: Name the test
+* nodes: How many nodes to run for the test. Kubernetes-ipfs will automatically scale the deployment to match the value here before starting
+* times: How many times to run the full test.
+* expected: define the number of expected outcomes. This value should be outcomes per test * times. Specify the expected successes, failures, and timeouts.
 
-# Start Monitoring
-kubectl create -f ./prometheus-manifests.yml
+## Steps
+Each step contains a few flags that specify how they will be run, and a `cmd` which is the command to run on the node
+* name: Name the step
+* on_node: On which node number should we run this test?
+* end_node: When specified, we will run this test in parallel from on_node to end_node inclusive. Useful for testing simultaneous group interactions.
+* outputs: Specify a line number of output and what environment variable to save it to. It can be used for the following input section
+* inputs: Specify the environment variables to take in for this command.
+* cmd: Verbatim command to run on the node. Bash variables will be evaluated.
+* timeout: At this many seconds, the step will be cancelled and counted as "timeout".
+* assertions: At the moment, only `should_be_equal_to` Specify that a line number of stdout should be equal to a line you have used save_to on. On success, adds a success count, on fail, adds a failure count.
 
-# Start go-ipfs deployment
-kubectl create -f ./deployment.yml
-
-# Get first pods name
-PODNAME=$(kubectl get pods -o=json | jq -r '.items[0].metadata.name')
-
-# Sending commands to pods
-kubectl exec "$PODNAME" -- ipfs id
-```
-
-## Creating
-
-## Manual Steps
-
-### Create ipfs deployment
-
-```
-kubectl run ipfs --image=ipfs/go-ipfs --replicas=1 --port=5001
-```
-
-### Create service (expose deployment)
-
-```
-kubectl expose deployment ipfs --port=5001 --type=LoadBalancer
-```
-
-### Should be able to get ID via API now
-
-```
-curl --silent $(minikube service ipfs --url)/api/v0/id | jq .
-```
-
-### Create 4 more nodes
-
-```
-kubectl scale --replicas=5 deployments/ipfs
-```
