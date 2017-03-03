@@ -8,13 +8,13 @@ Go install and configured [golang](https://golang.org/doc/install)
 $GOPATH, $GOROOT and $GOBIN in environment [configure Go](https://golang.org/doc/install)
 '/usr/local/bin/' is in $PATH
 
-# install go dependencies  
+# Install go dependencies  
 
 `go get github.com/fatih/color`
 `go get github.com/davecgh/go-spew/spew`
 `go get gopkg.in/yaml.v2`
 
-# install Minikube using Mac OS X 
+# Install Minikube using Mac OS X 
 
 `curl -Lo minikube https://storage.googleapis.com/minikube/releases/v0.17.1/minikube-darwin-amd64 && chmod +x minikube && sudo mv minikube /usr/local/bin/` to download and save minikube 
 
