@@ -18,7 +18,7 @@ $GOPATH, $GOROOT and $GOBIN in environment [configure Go](https://golang.org/doc
 
 `curl -Lo minikube https://storage.googleapis.com/minikube/releases/v0.17.1/minikube-darwin-amd64 && chmod +x minikube && sudo mv minikube /usr/local/bin/` to download and save minikube 
 
-# install Minikube using Linux 
+# Install Minikube using Linux 
 
 `curl -Lo minikube https://storage.googleapis.com/minikube/releases/v0.17.1/minikube-linux-amd64 && chmod +x minikube && sudo mv minikube /usr/local/bin/` to download and save minikube 
 
