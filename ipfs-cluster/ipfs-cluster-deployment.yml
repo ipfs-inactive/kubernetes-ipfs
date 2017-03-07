@@ -1,0 +1,77 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: ipfs-cluster-bootstrapper
+  labels:
+    name: go-ipfs
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "5001"
+    prometheus.io/path: "debug/metrics/prometheus"
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: ipfs-cluster
+        role: bootstrapper
+    spec:
+      containers:
+      - name: ipfs-cluster-bootstrapper
+        image: "hsanjuan/ipfs-cluster:latest"
+        command: ["/usr/local/bin/start-daemons.sh"]
+        ports:
+        - containerPort: 4001
+          name: "swarm"
+          protocol: "TCP"
+        - containerPort: 5001
+          name: "api"
+          protocol: "TCP"
+        - containerPort: 9094
+          name: "clusterapi"
+          protocol: "TCP"
+        - containerPort: 9095
+          name: "clusterproxy"
+          protocol: "TCP"
+        - containerPort: 9096
+          name: "cluster"
+          protocol: "TCP"
+---
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: ipfs-cluster
+  labels:
+    name: ipfs-cluster
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "5001"
+    prometheus.io/path: "debug/metrics/prometheus"
+spec:
+  replicas: 5
+  template:
+    metadata:
+      labels:
+        app: ipfs-cluster
+        role: peer
+    spec:
+      containers:
+      - name: ipfs-cluster
+        image: "hsanjuan/ipfs-cluster:latest"
+        command: ["/usr/local/bin/start-daemons.sh"]
+        ports:
+        - containerPort: 4001
+          name: "swarm"
+          protocol: "TCP"
+        - containerPort: 5001
+          name: "api"
+          protocol: "TCP"
+        - containerPort: 9094
+          name: "clusterapi"
+          protocol: "TCP"
+        - containerPort: 9095
+          name: "clusterproxy"
+          protocol: "TCP"
+        - containerPort: 9096
+          name: "cluster"
+          protocol: "TCP"
