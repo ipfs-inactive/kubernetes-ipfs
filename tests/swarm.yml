@@ -1,6 +1,7 @@
 name: Swarm downloading a small file
 config:
   nodes: 11
+  selector: run=go-ipfs-stress
   times: 3
   expected:
       successes: 30

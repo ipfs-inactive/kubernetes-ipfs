@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"os"
 	"os/exec"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -20,7 +21,6 @@ import (
 // DEBUG decides if we should have debug output enabled or not
 var DEBUG = false
 
-// The k8s deployment name; this is what we use to select pods and scale the deployment.
 var DEPLOYMENT_NAME = "go-ipfs-stress"
 
 // Summary is
@@ -61,6 +61,7 @@ type Step struct {
 // Config is
 type Config struct {
 	Nodes         int           `yaml:"nodes"`
+	Selector      string        `yaml:"selector"`
 	Times         int           `yaml:"times"`
 	GraceShutdown time.Duration `yaml:"grace_shutdown"`
 	Expected      Expected      `yaml:"expected"`
@@ -137,21 +138,24 @@ func main() {
 		// In the event we ask the controller to scale, and the pods are just still starting
 		// e.g. If someone cancels the scale-up and restarts right after, then it'll just keep
 		// on doing the same thing.
-		running_nodes, err := getRunningPods()
+		running_nodes, err := getRunningPods(&test.Config)
 		if err != nil {
 			fatal(err)
 		}
 		if test.Config.Nodes > running_nodes {
 			fmt.Println("Not enough nodes running. Scaling up...")
-			err := scaleTo(test.Config.Nodes)
+			err := scaleTo(&test.Config)
 			if err != nil {
 				fatal(err)
 			}
 		}
-		pods, err := getPods() // Get the pod list after a scale-up
+		pods, err := getPods(&test.Config) // Get the pod list after a scale-up
 		color.Cyan("## Using " + strconv.Itoa(test.Config.Nodes) + " nodes for this test")
 		env := make([]string, 0)
 		for _, step := range test.Steps {
+			if step.EndNode == 0 {
+				step.EndNode = step.OnNode
+			}
 			env = handleStep(*pods, &step, &summary, env)
 		}
 		summary.TestsRan = summary.TestsRan + 1
@@ -165,20 +169,17 @@ func main() {
 }
 
 func handleStep(pods GetPodsOutput, step *Step, summary *Summary, env []string) []string {
-	color.Blue("### Running step '" + step.Name + "' on node " + strconv.Itoa(step.OnNode))
+	color.Blue("### Running step %s on nodes %d to %d", step.Name, step.OnNode, step.EndNode)
 	if len(step.Inputs) != 0 {
 		for _, input := range step.Inputs {
 			color.Blue("### Getting variable " + input)
 		}
 	}
-	color.Magenta("$ " + step.CMD)
-	numNodes := 1
-	endNode := step.OnNode
-	if step.EndNode != 0 {
-		numNodes = step.EndNode - step.OnNode + 1
-		endNode = step.EndNode
-		color.Magenta("Running parallel on " + strconv.Itoa(numNodes) + " nodes.")
-	}
+	color.Magenta("$ %s", step.CMD)
+	endNode := step.EndNode
+	numNodes := endNode - step.OnNode + 1
+	color.Magenta("Running parallel on %d nodes.", numNodes)
+
 	// Initialize a channel with depth of number of nodes we're testing on simultaneously
 	outputStrings := make(chan []string, numNodes)
 	outputErr := make(chan bool, numNodes)
@@ -197,18 +198,33 @@ func handleStep(pods GetPodsOutput, step *Step, summary *Summary, env []string) 
 		}
 		if len(step.Outputs) != 0 {
 			for index, output := range step.Outputs {
-				color.Magenta("### Saving output from line " + strconv.Itoa(output.Line) + " to variable " + output.SaveTo)
+				color.Magenta("### Saving output from line %d to variable %s", output.Line, output.SaveTo)
+				if index >= len(out) {
+					color.Red("Not enough lines in output. Skipping")
+					break
+				}
 				line := out[index]
-				env = append(env, output.SaveTo+"="+line)
+				env = append(env, output.SaveTo+"=\""+line+"\"")
 			}
 		}
 		if len(step.Assertions) != 0 {
 			for _, assertion := range step.Assertions {
+				if assertion.Line >= len(out) {
+					color.Red("Not enough lines in output.Skipping assertions")
+					break
+				}
 				lineToAssert := out[assertion.Line]
 				value := ""
+				// Find an env that matches the ShouldBeEqualTo variable
+				// i.e. RESULT="abc abc" matches ShouldBeEqualTo: RESULT
+				// value becomes then abc abc (without quotes)
 				for _, e := range env {
-					if strings.Contains(e, assertion.ShouldBeEqualTo) {
-						value = e[len(assertion.ShouldBeEqualTo)+1:]
+					rex := regexp.MustCompile(
+						fmt.Sprintf("^%s=\"(.*)\"$",
+							assertion.ShouldBeEqualTo))
+					found := rex.FindStringSubmatch(e)
+					if len(found) == 2 && found[1] != "" {
+						value = found[1]
 						break
 					}
 				}
@@ -230,9 +246,9 @@ func handleStep(pods GetPodsOutput, step *Step, summary *Summary, env []string) 
 	return env
 }
 
-func getPods() (*GetPodsOutput, error) {
+func getPods(cfg *Config) (*GetPodsOutput, error) {
 	// Only return pods that match our deployment.
-	cmd := exec.Command("kubectl", "get", "pods", "--output=json", "--selector=run="+DEPLOYMENT_NAME)
+	cmd := exec.Command("kubectl", "get", "pods", "--output=json", "--selector="+cfg.Selector)
 
 	out := new(bytes.Buffer)
 	errout := new(bytes.Buffer)
@@ -253,8 +269,8 @@ func getPods() (*GetPodsOutput, error) {
 	return pods, nil
 }
 
-func getRunningPods() (int, error) {
-	pods, err := getPods()
+func getRunningPods(cfg *Config) (int, error) {
+	pods, err := getPods(cfg)
 	if err != nil {
 		return 0, fmt.Errorf("%s\n", err)
 	}
@@ -268,7 +284,8 @@ func getRunningPods() (int, error) {
 }
 
 // Scale the k8s deployment to the size required for the tests.
-func scaleTo(number int) error {
+func scaleTo(cfg *Config) error {
+	number := cfg.Nodes
 	fmt.Printf("Scaling in progress...\n")
 	cmd := exec.Command("kubectl", "scale", "--replicas="+strconv.Itoa(number), "deployment/"+DEPLOYMENT_NAME)
 	errbuf := new(bytes.Buffer)
@@ -280,7 +297,7 @@ func scaleTo(number int) error {
 	// Wait until the pods are in "ready" state
 	number_running := 0
 	for number_running < number {
-		number_running, err = getRunningPods()
+		number_running, err = getRunningPods(cfg)
 		if err != nil {
 			return err
 		}
@@ -332,7 +349,7 @@ func runInPodAsync(name string, cmdToRun string, env []string, timeout int, chan
 		}
 		lines = strings.Split(out.String(), "\n")
 		// Feed our output into the channel.
-		chanStrings <- lines[:len(lines)-1]
+		chanStrings <- lines
 		chanTimeout <- timeout_reached
 	}()
 }

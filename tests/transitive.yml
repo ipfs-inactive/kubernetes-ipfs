@@ -1,6 +1,7 @@
 name: Transitive
 config:
   nodes: 3
+  selector: run=go-ipfs-stress
   times: 10
   expected:
       successes: 10

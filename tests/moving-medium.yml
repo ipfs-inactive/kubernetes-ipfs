@@ -1,6 +1,7 @@
 name: Moving a medium-sized file across the internet
 config:
   nodes: 4
+  selector: run=go-ipfs-stress
   times: 3
   expected:
       successes: 6

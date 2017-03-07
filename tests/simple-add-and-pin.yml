@@ -1,6 +1,7 @@
 name: Simple Add and Pin
 config:
   nodes: 5
+  selector: run=go-ipfs-stress
   times: 25
   grace_shutdown: 10
   expected:
