@@ -1,0 +1,112 @@
+name: Each of 10 nodes upload one file, download another
+config:
+  nodes: 11
+  selector: run=go-ipfs-stress
+  times: 1
+  expected:
+      successes: 100
+      failures: 0
+      timeouts: 0
+
+steps:
+
+  - name: Node 1 create 10 5MB Files
+    on_node: 1
+    cmd: "for i in {1..10}; do
+            head -c 5000000 /dev/urandom | base64 > /tmp/file$i.txt
+            && md5sum /tmp/file$i.txt | cut -d ' ' -f 1
+            && ipfs add -q /tmp/file$i.txt;
+          done"
+    timeout: 0
+    outputs: 
+    - line: 0
+      save_to: FILE_1
+    - line: 1
+      save_to: HASH_1
+    - line: 2
+      save_to: FILE_2
+    - line: 3
+      save_to: HASH_2
+    - line: 4
+      save_to: FILE_3
+    - line: 5
+      save_to: HASH_3
+    - line: 6
+      save_to: FILE_4
+    - line: 7
+      save_to: HASH_4
+    - line: 8
+      save_to: FILE_5
+    - line: 9
+      save_to: HASH_5
+    - line: 10
+      save_to: FILE_6
+    - line: 11
+      save_to: HASH_6
+    - line: 12
+      save_to: FILE_7
+    - line: 13
+      save_to: HASH_7
+    - line: 14
+      save_to: FILE_8
+    - line: 15
+      save_to: HASH_8
+    - line: 16
+      save_to: FILE_9
+    - line: 17
+      save_to: HASH_9
+    - line: 18
+      save_to: FILE_10
+    - line: 19
+      save_to: HASH_10
+
+  - name: Nodes 2-11 cat the files
+    on_node: 2
+    end_node: 11
+    inputs:
+      - FILE_1
+      - HASH_1
+      - FILE_2
+      - HASH_2
+      - FILE_3
+      - HASH_3
+      - FILE_4
+      - HASH_4
+      - FILE_5
+      - HASH_5
+      - FILE_6
+      - HASH_6
+      - FILE_7
+      - HASH_7
+      - FILE_8
+      - HASH_8
+      - FILE_9
+      - HASH_9
+      - FILE_10
+      - HASH_10
+    cmd: "for i in {1..10}; do
+          ipfs cat $HASH_$i | md5sum | cut -d ' ' -f 1;
+          done"
+    timeout: 100
+    assertions:
+      - line: 0
+        should_be_equal_to: FILE_1
+      - line: 1
+        should_be_equal_to: FILE_2
+      - line: 2
+        should_be_equal_to: FILE_3
+      - line: 3
+        should_be_equal_to: FILE_4
+      - line: 4
+        should_be_equal_to: FILE_5
+      - line: 5
+        should_be_equal_to: FILE_6
+      - line: 6
+        should_be_equal_to: FILE_7
+      - line: 7
+        should_be_equal_to: FILE_8
+      - line: 8
+        should_be_equal_to: FILE_9
+      - line: 9
+        should_be_equal_to: FILE_10
+

@@ -1,0 +1,44 @@
+name: 2 nodes upload random files, ensure different
+config:
+  nodes: 2
+  selector: run=go-ipfs-stress
+  times: 10
+  expected:
+      successes: 0
+      failures: 10
+      timeouts: 0
+steps:
+  - name: Node 1 create 5MB File
+    on_node: 1
+    cmd: "head -c 5000000 /dev/urandom | base64 > /tmp/file.txt
+          && md5sum /tmp/file.txt | cut -d ' ' -f 1
+          && ipfs add -q /tmp/file.txt"
+    timeout: 0
+    outputs: 
+    - line: 0
+      save_to: FILE_1
+    - line: 1
+      save_to: HASH_1
+
+  - name: Node 2 create 5MB File
+    on_node: 2
+    cmd: "head -c 5000000 /dev/urandom | base64 > /tmp/file.txt
+          && md5sum /tmp/file.txt | cut -d ' ' -f 1
+          && ipfs add -q /tmp/file.txt"
+    timeout: 0
+    outputs: 
+    - line: 0
+      save_to: FILE_2
+    - line: 1
+      save_to: HASH_2
+
+  - name: Ensure files different
+    on_node: 1
+    inputs:
+      - HASH_2
+      - FILE_1
+    cmd: "ipfs cat $HASH_2 | md5sum | cut -d ' ' -f 1"
+    timeout: 25
+    assertions:
+      - line: 0
+        should_be_equal_to: FILE_1
