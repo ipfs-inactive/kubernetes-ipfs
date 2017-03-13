@@ -198,12 +198,12 @@ func handleStep(pods GetPodsOutput, step *Step, summary *Summary, env []string) 
 		}
 		if len(step.Outputs) != 0 {
 			for index, output := range step.Outputs {
-				color.Magenta("### Saving output from line %d to variable %s", output.Line, output.SaveTo)
 				if index >= len(out) {
 					color.Red("Not enough lines in output. Skipping")
 					break
 				}
 				line := out[index]
+				color.Magenta("### Saving output from line %d to variable %s: %s", output.Line, output.SaveTo, line)
 				env = append(env, output.SaveTo+"=\""+line+"\"")
 			}
 		}
@@ -228,18 +228,22 @@ func handleStep(pods GetPodsOutput, step *Step, summary *Summary, env []string) 
 						break
 					}
 				}
+				// If nothing was found in the environment,
+				// assume its a literal
+				if value == "" {
+					value = assertion.ShouldBeEqualTo
+				}
 				if lineToAssert != value {
 					color.Set(color.FgRed)
 					fmt.Println("Assertion failed!")
-					fmt.Println("Actual value=" + value)
-					fmt.Println("Expected value=" + lineToAssert)
+					fmt.Printf("Actual value=%s\n", lineToAssert)
+					fmt.Printf("Expected value=%s\n\n", value)
 					color.Unset()
 					summary.Failures = summary.Failures + 1
 				} else {
 					summary.Successes = summary.Successes + 1
 					color.Green("Assertion Passed")
 				}
-				fmt.Println()
 			}
 		}
 	}
@@ -321,7 +325,7 @@ func runInPodAsync(name string, cmdToRun string, env []string, timeout int, chan
 		if envString != "" {
 			envString = envString + "&& "
 		}
-		cmd := exec.Command("kubectl", "exec", name, "--", "bash", "-c", envString+cmdToRun)
+		cmd := exec.Command("kubectl", "exec", name, "-t", "--", "bash", "-c", envString+cmdToRun)
 		var out bytes.Buffer
 		var errout bytes.Buffer
 		cmd.Stdout = &out
@@ -362,7 +366,7 @@ func runInPod(name string, cmdToRun string, env []string, timeout int) ([]string
 	if envString != "" {
 		envString = envString + "&& "
 	}
-	cmd := exec.Command("kubectl", "exec", name, "--", "bash", "-c", envString+cmdToRun)
+	cmd := exec.Command("kubectl", "exec", name, "-t", "--", "bash", "-c", envString+cmdToRun)
 	var out bytes.Buffer
 	var errout bytes.Buffer
 	cmd.Stdout = &out
