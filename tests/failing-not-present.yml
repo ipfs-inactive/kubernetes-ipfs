@@ -1,5 +1,6 @@
 name: Failing - Not Present
 config:
+  selector: run=go-ipfs-stress
   nodes: 2
   times: 10
   expected:

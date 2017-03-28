@@ -1,6 +1,7 @@
 name: Simple Add and Cat on 2 Node
 config:
   nodes: 2
+  selector: run=go-ipfs-stress
   times: 10
   expected:
       successes: 10

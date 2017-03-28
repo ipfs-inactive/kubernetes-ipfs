@@ -1,5 +1,6 @@
 name: Add and GC
 config:
+  selector: run=go-ipfs-stress
   nodes: 1
   times: 10
   expected:

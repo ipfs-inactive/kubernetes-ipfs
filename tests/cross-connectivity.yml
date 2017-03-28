@@ -1,5 +1,6 @@
 name: Cross-Network Connectivity
 config:
+  selector: run=go-ipfs-stress
   nodes: 3
   times: 3
   expected:
