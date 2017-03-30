@@ -41,10 +41,10 @@ steps:
         should_be_equal_to: "3 remote"
   - name: change replication to 100000 and expect error
     on_node: 1
-    cmd: ipfs-cluster-ctl pin add -r 1000000 $HASH 2>&1 >/dev/null | grep -o Error
+    cmd: ipfs-cluster-ctl --enc json pin add -r 1000000 $HASH | jq .code
     assertions:
       - line: 0
-        should_be_equal_to: "Error"
+        should_be_equal_to: "500"
   - name: change replication to -1
     on_node: 3
     cmd: ipfs-cluster-ctl pin add -r -1 $HASH
