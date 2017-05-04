@@ -10,20 +10,22 @@ config:
 steps:
   - name: add random stuff to ipfs
     on_node: 1
-    cmd: head -c 10 /dev/urandom | base64 | ipfs add -q
+    cmd: "head -c 10 /dev/urandom | base64 | ipfs add -q"
     outputs:
     - line: 0
       save_to: HASH
   - name: add to ipfs cluster
     on_node: 1
-    cmd: ipfs-cluster-ctl pin add $HASH && sleep 2
+    cmd: "ipfs-cluster-ctl pin add $HASH && sleep 2"
   - name: remove from ipfs cluster
     on_node: 2
-    cmd: ipfs-cluster-ctl pin rm $HASH && sleep 1
+    cmd: "ipfs-cluster-ctl pin rm $HASH && sleep 1"
   - name: check that hash is unpinned everywhere
     on_node: 1
     end_node: 5
-    cmd: ipfs-cluster-ctl --enc json status $HASH | jq -r '.peer_map | .[].status' | sort | uniq | tee /tmp/file.txt && cat /tmp/file.txt | wc -l
+    cmd: "ipfs-cluster-ctl --enc json status $HASH
+        | jq -r '.peer_map | .[].status' | sort | uniq
+        | tee /tmp/file.txt && cat /tmp/file.txt | wc -l"
     assertions:
       - line: 0
         should_be_equal_to: "unpinned"
