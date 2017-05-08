@@ -48,14 +48,15 @@ type Assertion struct {
 
 // Step is
 type Step struct {
-	Name       string      `yaml:"name"`
-	OnNode     int         `yaml:"on_node"`
-	EndNode    int         `yaml:"end_node"`
-	CMD        string      `yaml:"cmd"`
-	Timeout    int         `yaml:"timeout"`
-	Outputs    []Output    `yaml:"outputs"`
-	Inputs     []string    `yaml:"inputs"`
-	Assertions []Assertion `yaml:"assertions"`
+	Name        string      `yaml:"name"`
+	OnNode      int         `yaml:"on_node"`
+	EndNode     int         `yaml:"end_node"`
+	CMD         string      `yaml:"cmd"`
+	Timeout     int         `yaml:"timeout"`
+	Outputs     []Output    `yaml:"outputs"`
+	Inputs      []string    `yaml:"inputs"`
+	Assertions  []Assertion `yaml:"assertions"`
+	WriteToFile string      `yaml:"write_to_file"`
 }
 
 // Config is
@@ -195,6 +196,14 @@ func handleStep(pods GetPodsOutput, step *Step, summary *Summary, env []string) 
 		if err {
 			summary.Timeouts++
 			continue // skip handling the output or other assertions since it timed out.
+		}
+		if len(step.WriteToFile) != 0 {
+			f, err := os.OpenFile(step.WriteToFile, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0664)
+			if err != nil {
+				color.Red("Failed to open output file: %s", err)
+			} else {
+				f.WriteString(strings.Join(out, "\n"))
+			}
 		}
 		if len(step.Outputs) != 0 {
 			for index, output := range step.Outputs {
