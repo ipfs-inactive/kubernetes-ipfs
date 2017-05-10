@@ -51,12 +51,19 @@ type Step struct {
 	Name        string      `yaml:"name"`
 	OnNode      int         `yaml:"on_node"`
 	EndNode     int         `yaml:"end_node"`
+	OnSubset    Subset      `yaml:"on_subsets"`
 	CMD         string      `yaml:"cmd"`
 	Timeout     int         `yaml:"timeout"`
 	Outputs     []Output    `yaml:"outputs"`
 	Inputs      []string    `yaml:"inputs"`
 	Assertions  []Assertion `yaml:"assertions"`
 	WriteToFile string      `yaml:"write_to_file"`
+}
+
+// Subset is
+type Subset struct {
+	Numbers []int `yaml:"numbers"`
+	Total   int   `yaml:"total"`
 }
 
 // Config is
@@ -150,14 +157,27 @@ func main() {
 				fatal(err)
 			}
 		}
+
 		pods, err := getPods(&test.Config) // Get the pod list after a scale-up
 		color.Cyan("## Using " + strconv.Itoa(test.Config.Nodes) + " nodes for this test")
 		env := make([]string, 0)
 		for _, step := range test.Steps {
-			if step.EndNode == 0 {
-				step.EndNode = step.OnNode
+			// run step on specified subset(s)
+			if step.OnSubset.Total != 0 {
+				numSubsets := step.OnSubset.Total
+				numNodes := test.Config.Nodes
+				for _, subset := range step.OnSubset.Numbers {
+					// calculate start/end of the subset range
+					step.OnNode, step.EndNode = getSubsetBounds(subset, numSubsets, numNodes)
+					env = handleStep(*pods, &step, &summary, env)
+				}
+				// run step between pair of nodes
+			} else {
+				if step.EndNode == 0 {
+					step.EndNode = step.OnNode
+				}
+				env = handleStep(*pods, &step, &summary, env)
 			}
-			env = handleStep(*pods, &step, &summary, env)
 		}
 		summary.TestsRan = summary.TestsRan + 1
 	}
@@ -167,6 +187,26 @@ func main() {
 	summary.End = time.Now()
 	printSummary(summary)
 	os.Exit(evaluateOutcome(summary, test.Config.Expected)) // Returns success on all tests to OS; this allows for test scripting.
+}
+
+func getSubsetBounds(subset int, numSubsets int, numNodes int) (int, int) {
+	var offset1 int
+	if (((subset - 1) * numNodes) % numSubsets) > 0 {
+		offset1 = 1
+	} else {
+		offset1 = 0
+	}
+	startNode := 1 + (subset-1)*numNodes/numSubsets + offset1
+
+	var offset2 int
+	if ((subset * numNodes) % numSubsets) > 0 {
+		offset2 = 1
+	} else {
+		offset2 = 0
+	}
+	endNode := subset*numNodes/numSubsets + offset2
+
+	return startNode, endNode
 }
 
 func handleStep(pods GetPodsOutput, step *Step, summary *Summary, env []string) []string {

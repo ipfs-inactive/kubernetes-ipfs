@@ -9,8 +9,8 @@ config:
       timeouts: 0
 steps:
   - name: add random stuff to ipfs
-    on_node: 1
     cmd: "head -c 10 /dev/urandom | base64 | ipfs add -q"
+    on_node: 1
     outputs:
     - line: 0
       save_to: HASH
