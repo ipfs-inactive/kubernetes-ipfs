@@ -186,7 +186,7 @@ func handleStep(pods GetPodsOutput, step *Step, summary *Summary, env []string) 
 	outputErr := make(chan bool, numNodes)
 	for j := step.OnNode; j <= endNode; j++ {
 		// Hand this channel to the pod runner and let it fill the queue
-		runInPodAsync(pods.Items[step.OnNode-1].Metadata.Name, step.CMD, env, step.Timeout, outputStrings, outputErr)
+		runInPodAsync(pods.Items[j-1].Metadata.Name, step.CMD, env, step.Timeout, outputStrings, outputErr)
 	}
 	// Iterate through the queue to pull out results one-by-one
 	// These may be out of order, but is there a better way to do this? Do we need them in order?
