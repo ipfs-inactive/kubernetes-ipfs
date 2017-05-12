@@ -1,0 +1,32 @@
+name: Replicate large files
+config:
+  nodes: 5
+  selector: app=ipfs-cluster
+  times: 2
+  expected:
+      successes: 4 # 2 for each iteration (to start)
+      failures: 0
+      timeouts: 0
+steps:
+  - name: add large random stuff to ipfs
+    on_node: 2
+    cmd: head -c 100000000 /dev/urandom | base64 | ipfs add -q
+    outputs:
+    - line: 0
+      save_to: HASH
+  - name: add large random stuff to cluster for replication
+    on_node: 2
+    cmd: ipfs-cluster-ctl pin add -r 3 $HASH
+  - name: wait for 30s for everything to get pinned
+    on_node: -1
+    end_node: 1
+    cmd: sleep 30
+  - name: check that the large file is pinned with the correct replication factor
+    on_node: -1
+    end_node: 1
+    cmd: ipfs-cluster-ctl --enc json status $HASH | jq -r '.peer_map | .[].status' | sort | uniq -c | sed 's/^ *//'
+    assertions:
+      - line: 0
+        should_be_equal_to: "3 pinned"
+      - line: 1
+        should_be_equal_to: "3 remote"

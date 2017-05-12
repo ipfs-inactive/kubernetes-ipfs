@@ -19,11 +19,11 @@ steps:
     cmd: ipfs-cluster-ctl pin add -r 3 $HASH && sleep 1
   - name: block ipfs daemon in original pod
     on_node: 1
-    cmd: killall ipfs daemon && sleep 10
+    cmd: killall -STOP ipfs-cluster-service && sleep 10
   - name: block ipfs daemon in random pod
     on_node: -1
     end_node: 1
-    cmd: killall ipfs daemon && sleep 10
+    cmd: killall -STOP ipfs-cluster-service && sleep 10
   - name: check that random stuff is repinned with correct replication factor
     on_node: 1
     end_node: 5
