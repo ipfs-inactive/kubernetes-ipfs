@@ -23,6 +23,13 @@ var DEBUG = false
 
 var DEPLOYMENT_NAME = "go-ipfs-stress"
 
+const (
+  RANDOM     = "RANDOM"
+  SEQUENTIAL = "SEQUENTIAL"
+  EVEN       = "EVEN"
+  WEIGHTED   = "WEIGHTED"
+) 
+
 // Summary is
 type Summary struct {
 	Start      time.Time
@@ -49,9 +56,13 @@ type Assertion struct {
 // Step is
 type Step struct {
 	Name        string      `yaml:"name"`
+
+	/* Old style selection remains supported */
 	OnNode      int         `yaml:"on_node"`
 	EndNode     int         `yaml:"end_node"`
-	OnSubset    Subset      `yaml:"on_subsets"`
+	/* New style selection */
+	Selection   Selection   `yaml:"selection"`
+
 	CMD         string      `yaml:"cmd"`
 	Timeout     int         `yaml:"timeout"`
 	Outputs     []Output    `yaml:"outputs"`
@@ -60,19 +71,56 @@ type Step struct {
 	WriteToFile string      `yaml:"write_to_file"`
 }
 
-// Subset is
+// Selection is
+type Selection struct {
+  Range   Range   `yaml:range`
+  Percent Percent `yaml:percent`
+  Subset  Subset  `yaml:subset`
+}
+
+// Range is
+type Range struct {
+  Order  int `yaml:order`  /* RANDOM or SEQUENTIAL */
+  Start  int `yaml:start`  /* Valid for SEQUENTIAL */
+  End    int `yaml:end`    /* Valid for SEQUENTIAL */
+  Number int `yaml:number` /* Valid for RANDOM */  
+}
+
+// Percent is
+type Percent struct {
+  Order  int `yaml:order`  /* RANDOM or SEQUENTIAL */
+  Start  int `yaml:start`  /* Valid for SEQUENTIAL */
+  End    int `yaml:end`    /* Valid for SEQUENTIAL */
+  Number int `yaml:number` /* Valid for RANDOM */  
+}
+
+// Subset is 
 type Subset struct {
+  Indices []int `yaml:indices`
+}
+
+// SubsetOld is
+type SubsetOld struct {
 	Numbers []int `yaml:"numbers"`
 	Total   int   `yaml:"total"`
 }
 
 // Config is
 type Config struct {
-	Nodes         int           `yaml:"nodes"`
-	Selector      string        `yaml:"selector"`
-	Times         int           `yaml:"times"`
-	GraceShutdown time.Duration `yaml:"grace_shutdown"`
-	Expected      Expected      `yaml:"expected"`
+	Nodes           int             `yaml:"nodes"`
+	Selector        string          `yaml:"selector"`
+	Times           int             `yaml:"times"`
+	GraceShutdown   time.Duration   `yaml:"grace_shutdown"`
+	Expected        Expected        `yaml:"expected"`
+	SubsetPartition SubsetPartition `yaml:subset_partition`
+}
+
+//SubsetParition is
+type SubsetPartition struct {
+  PartitionType    int   `yaml:partion_type`      /* Either EVEN or WEIGHTED */
+  Order            int   `yaml:order`             /* Either RANDOM or SEQUENTIAL */
+  Percents         []int `yaml:percents`          /* Valid for WEIGHTED */
+  NumberPartitions int   `yaml:number_partitions` /* Valid for EVEN */
 }
 
 // Expected is
@@ -124,6 +172,7 @@ func main() {
 
 	var test Test
 	var summary Summary
+	var subsetPartition map[int][]int
 
 	err = yaml.Unmarshal([]byte(fileData), &test)
 	if err != nil {
@@ -132,6 +181,15 @@ func main() {
 
 	debug("Configuration:")
 	debugSpew(test)
+
+	/* Include call to partition nodes into subsets if the partition field is included in the 
+	   config.  subsetPartion is nil if it is not included in config.  Tests must include this 
+	   in the config in order to use the subset selection method to choose nodes later on during
+	   testing  */
+	err, subsetPartition = partition(test)
+	if err != nil {
+		fatal(err)
+	}
 
 	summary.TestsToRun = test.Config.Times
 	summary.Start = time.Now()
@@ -162,13 +220,23 @@ func main() {
 		color.Cyan("## Using " + strconv.Itoa(test.Config.Nodes) + " nodes for this test")
 		env := make([]string, 0)
 		for _, step := range test.Steps {
-			// run step on specified subset(s)
+			nodeIndices := selectNodes(&step)
+			env = handleStep(*pods, &step, &summary, env, nodeIndices)
+
+
+
+
+
+
+
+
 			if step.OnSubset.Total != 0 {
 				numSubsets := step.OnSubset.Total
 				numNodes := test.Config.Nodes
 				for _, subset := range step.OnSubset.Numbers {
-					// calculate start/end of the subset range
 					step.OnNode, step.EndNode = getSubsetBounds(subset, numSubsets, numNodes)
+					/* Do something similar to subset, include slice of node indices for running 
+					   in step and set this each tim before the step */
 					env = handleStep(*pods, &step, &summary, env)
 				}
 				// run step between pair of nodes
@@ -179,6 +247,11 @@ func main() {
 				env = handleStep(*pods, &step, &summary, env)
 			}
 		}
+
+
+
+
+
 		summary.TestsRan = summary.TestsRan + 1
 	}
 	fmt.Println(time.Now().String())
@@ -209,7 +282,7 @@ func getSubsetBounds(subset int, numSubsets int, numNodes int) (int, int) {
 	return startNode, endNode
 }
 
-func handleStep(pods GetPodsOutput, step *Step, summary *Summary, env []string) []string {
+func handleStep(pods GetPodsOutput, step *Step, summary *Summary, env []string, nodeIndices []int) []string {
 	color.Blue("### Running step %s on nodes %d to %d", step.Name, step.OnNode, step.EndNode)
 	if len(step.Inputs) != 0 {
 		for _, input := range step.Inputs {
@@ -445,6 +518,75 @@ func runInPod(name string, cmdToRun string, env []string, timeout int) ([]string
 	return lines[:len(lines)-1], timeout_reached
 }
 
+func selectNodes(step Step, config Config) int[]{
+	/* Handle OnNode EndNode syntax */
+	if step.OnNode > 0 {
+		if step.Selection != nil {
+			fatal("Two node selection methods on test step")
+		}
+		if step.EndNode == 0 {
+			step.EndNode = step.OnNode
+		}
+		return []
+	} else if step.Selection == nil {
+		fatal("No selection method on test step")
+	} else { /* Selection chooses nodes */
+		if (step.Selection.Range == nil && step.Selection.Percent == nil 
+			  && step.Selection.Subset == nil) {
+			fatal("No selection method on test step")
+		} else if (step.Selection.Range != nil) {
+			return selectNodesRange(step, config)
+		} else if (step.Selection.Percent != nil) {
+			return selectNodesRange(step)
+		} else /* Subset selection */ {
+			return selectNodesSubset(step, subsetPartition)
+		}
+	}
+}
+
+func selectNodesRange(step Step, config Config) int[]{
+	if step.Selection.Range.Order == SEQUENTIAL {
+	  if step.Selection.Range.Start <=0 || 
+			step.Selection.Range.End - step.Selection.Range.Start +1 > config.nodes {
+				fatal("Invalid range")
+		}
+		return makeRange(step.Selection.Range.Start, step.Selection.Range.End)
+	} else if step.Selection.Range.Order == RANDOM {
+		if step.Selection.Range.Number > config.nodes {
+			fatal("Invalid range")
+		}
+
+
+
+		
+	} else /* Invalid order */ {
+			fatal("Invalid Selection format. Order must be SEQUENTIAL or RANDOM ")
+	}
+} 
+
+func selectNodesPercent(step Step) int[] {
+	if step.Selection.Percent.Order == SEQUENTIAL {
+		
+	} else if step.Selection.Percent.Order == RANDOM {
+
+	} else /* Invalid order */ {
+		fatal("Invalid Selection format. Order must be SEQUENTIAL or RANDOM ")
+	}
+}
+
+func selectNodesSubset(step Step, subsetPartition map[int]int[]) int[]{
+	if (subsetPartition == nil) {
+		fatal("Subset specified without specifying partion in header")
+	}
+}
+
+
+
+
+func partition(test Test) {
+
+}
+
 func debug(str string) {
 	debugEnvVar := os.Getenv("DEBUG")
 	if debugEnvVar != "" {
@@ -511,4 +653,12 @@ func evaluateOutcome(summary Summary, expected Expected) int {
 
 func unixToStr(i int64) string {
 	return strconv.FormatInt(i, 10) + "000"
+}
+
+funct makeRange(min, max int) []int {
+	a := make([]int, max-min+1)
+	for i := range a {
+		a[i] = min + i
+	}
+	return a
 }
