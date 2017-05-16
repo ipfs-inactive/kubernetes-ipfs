@@ -20,9 +20,6 @@ steps:
   - name: block ipfs daemon in original pod
     on_node: 1
     cmd: killall -STOP ipfs-cluster-service && sleep 15
-  - name: block ipfs daemon in random pod
-    on_node: 2
-    cmd: killall -STOP ipfs-cluster-service && sleep 15
   - name: check that random stuff is repinned with correct replication factor
     on_node: 3
     cmd: ipfs-cluster-ctl --enc json status $HASH | jq -r '.peer_map | .[].status' | sort | uniq -c | sed 's/^ *//'
@@ -33,5 +30,4 @@ steps:
         should_be_equal_to: "3 remote"
   - name: restart daemon to restore state
     on_node: 1
-    end_node: 2
     cmd: killall -CONT ipfs-cluster-service
