@@ -187,10 +187,7 @@ func main() {
 	   config.  subsetPartion is nil if it is not included in config.  Tests must include this 
 	   in the config in order to use the subset selection method to choose nodes later on during
 	   testing  */
-	err, subsetPartition = partition(test)
-	if err != nil {
-		fatal(err)
-	}
+	subsetPartition = partition(test)
 
 	summary.TestsToRun = test.Config.Times
 	summary.Start = time.Now()
@@ -223,30 +220,7 @@ func main() {
 		for _, step := range test.Steps {
 			nodeIndices := selectNodes(&step)
 			env = handleStep(*pods, &step, &summary, env, nodeIndices)
-
-
-			if step.OnSubset.Total != 0 {
-				numSubsets := step.OnSubset.Total
-				numNodes := test.Config.Nodes
-				for _, subset := range step.OnSubset.Numbers {
-					step.OnNode, step.EndNode = getSubsetBounds(subset, numSubsets, numNodes)
-					/* Do something similar to subset, include slice of node indices for running 
-					   in step and set this each tim before the step */
-					env = handleStep(*pods, &step, &summary, env)
-				}
-				// run step between pair of nodes
-			} else {
-				if step.EndNode == 0 {
-					step.EndNode = step.OnNode
-				}
-				env = handleStep(*pods, &step, &summary, env)
-			}
 		}
-
-
-
-
-
 		summary.TestsRan = summary.TestsRan + 1
 	}
 	fmt.Println(time.Now().String())
@@ -285,8 +259,7 @@ func handleStep(pods GetPodsOutput, step *Step, summary *Summary, env []string, 
 		}
 	}
 	color.Magenta("$ %s", step.CMD)
-	endNode := step.EndNode
-	numNodes := endNode - step.OnNode + 1
+	numNodes := len(nodeIndices)
 	color.Magenta("Running parallel on %d nodes.", numNodes)
 
 	// Initialize a channel with depth of number of nodes we're testing on simultaneously
@@ -521,8 +494,11 @@ func selectNodes(step Step, config Config) int[]{
 		}
 		if step.EndNode == 0 {
 			step.EndNode = step.OnNode
+			select := make(int[], 1)
+			select[0] = step.OnNode
+			return select
 		}
-		return []
+		return makeRange(step.OnNode, step.EndNode)
 	} else if step.Selection == nil {
 		fatal("No selection method on test step")
 	} else { /* Selection chooses nodes */
@@ -582,16 +558,98 @@ func selectNodesSubset(step Step, subsetPartition map[int]int[]) int[]{
 	}
 	selected := make(int[])
 	for _, partition := step.Selection.Subset.Indices {
-		selected = append(selected, subsetPartition[partition])
+		selected = append(selected, subsetPartition[partition]...)
 	}
 	return selected
 }
 
 
+func partition(config Config) {
+	if config.SubsetPartiton == nil {
+		return nil
+	} 
+	partitionMap := make(map[int]int[])
+
+	if config.SubsetPartition.Order == SEQUENTIAL {
+		if config.SubsetPartition.PartitionType == EVEN {
+			seqEvenPartition(&partitionMap, config.SubsetPartition.NumberPartitions, config.nodes)
+			return partitionMap
+		} else if config.SubsetPartition.PartitionType == WEIGHTED {
+			seqWeightedPartition(&partitionMap, config.nodes)
+		} else /* invalid partition type */{
+				fatal("Invalid partition type")
+		}
+	} else if config.SubsetPartition.Order == RANDOM {
+		if config.SubsetPartition.PartitionType == EVEN {
+			randEvenPartition(&partitionMap)
+			return partitionMap
+		} else if config.SubsetPartition.PartitionType == WEIGHTED {
+			randWeightedPartition(&partitionMap)
+			return partitionMap
+		} else /* invalid partition type */{
+				fatal("Invalid partition type")
+		}
+	} else { /* invalid ordering */
+		fatal("Partition has invalid order")
+	}
+}
+
+func seqEvenPartition(partitionMap map[int]int[], numSubsets int, numNodes int) {
+	for i := range numSubsets {
+		startNode, endNode := getSubsetBounds(i, numSubsets, numNodes)
+		partitionMap[i] = makeRange(startNode, endNode)
+	}
+}
+
+func randEvenPartition(partitionMap map[int]int[], numSubsets int numNodes int) {
+	sample := rand.Perm(numNodes)
+	for i := range numSubsets {
+		startNode, endNode := getSubsetBounds(i, numSubsets, numNodes)
+		partitionMap[i] = sample[startNode -1:endNode -1]
+	}
+}
+
+func weightedPartition(partitionMap map[int]int[], percents int[], numNodes int, random bool){
+	/* Get all of the node nums for each partition, then spread 
+	   out leftovers from rounding among the earliest subsets */
+	if len(percents) > numNodes {
+		fatal("No more partitions than number of nodes")
+	}
+	/* Calculate size of each partitions */
+	partitionSize := make(int[])
+	var size, sum, leftovers, acc int
+	sum = 0
+	for _, percent := range percents {
+		size = int( (float64(percent) / 100.0) * float64(numNodes) )
+		sum += size
+		partitionSize = append(partitionSize, size)
+	}
+
+	/* Calculate indices of nodes in partition, accounting for rounding error */
+	leftovers = numNodes - sum
+	acc = 0
+	var sample []int
+	if random {
+		sample = rand.Perm(numNodes)
+	} else { /* sequential */
+		sample = makeRange(1, numNodes)
+	}
+	for i,size := range partitionSize {
+		if leftovers > 0 {
+			leftovers -= 1
+			size += 1
+		}
+		partitionMap[i] := sample[acc:size]
+		acc = size
+}
 
 
-func partition(test Test) {
+func seqWeightedPartition( partitionMap map[int]int[], percents int[], numNodes int) {
+	weightedPartition(partitionMap map[int]int[], percents int[], numNodes int, false)
+}
 
+func randWeightedPartition( partitionMap map[int]int[], percents int[], numNodes int) {
+	weightedPartition(partitionMap map[int]int[], percents int[], numNodes int, true)
 }
 
 func debug(str string) {
