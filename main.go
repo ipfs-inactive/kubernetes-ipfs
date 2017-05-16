@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"math/rand"
 
 	"github.com/davecgh/go-spew/spew"
 	"github.com/fatih/color"
@@ -88,10 +89,10 @@ type Range struct {
 
 // Percent is
 type Percent struct {
-  Order  int `yaml:order`  /* RANDOM or SEQUENTIAL */
-  Start  int `yaml:start`  /* Valid for SEQUENTIAL */
-  End    int `yaml:end`    /* Valid for SEQUENTIAL */
-  Number int `yaml:number` /* Valid for RANDOM */  
+  Order   int `yaml:order`  /* RANDOM or SEQUENTIAL */
+  Start   int `yaml:start`  /* Valid for SEQUENTIAL */
+  End     int `yaml:end`    /* Valid for SEQUENTIAL */
+  Percent int `yaml:number` /* Valid for RANDOM */  
 }
 
 // Subset is 
@@ -222,12 +223,6 @@ func main() {
 		for _, step := range test.Steps {
 			nodeIndices := selectNodes(&step)
 			env = handleStep(*pods, &step, &summary, env, nodeIndices)
-
-
-
-
-
-
 
 
 			if step.OnSubset.Total != 0 {
@@ -555,20 +550,27 @@ func selectNodesRange(step Step, config Config) int[]{
 		if step.Selection.Range.Number > config.nodes {
 			fatal("Invalid range")
 		}
+		return rand.Perm(config.nodes)[0:step.Selection.Range.Number]
 
-
-
-		
 	} else /* Invalid order */ {
 			fatal("Invalid Selection format. Order must be SEQUENTIAL or RANDOM ")
 	}
 } 
 
-func selectNodesPercent(step Step) int[] {
+func selectNodesPercent(step Step, config Config) int[] {
+	var percent int
+	percent = step.Selection.Percent.Percent
+	if percent > 100 || percent < 0 {
+		fatal("Invalid percent")
+	}
+	numNodes = int( (float64(percent) / 100.0) * float64(config.nodes) )
 	if step.Selection.Percent.Order == SEQUENTIAL {
-		
+		if step.Selection.Percent.Start -1 + numNodes > config.nodes {
+			fatal("Invalid start position")
+		}
+		return makeRange(step.Selection.Percent.Start, step.Selection.Percent.Start -1 + numNodes)
 	} else if step.Selection.Percent.Order == RANDOM {
-
+		return rand.Perm(config.nodes)[0:numNodes]
 	} else /* Invalid order */ {
 		fatal("Invalid Selection format. Order must be SEQUENTIAL or RANDOM ")
 	}
@@ -578,6 +580,11 @@ func selectNodesSubset(step Step, subsetPartition map[int]int[]) int[]{
 	if (subsetPartition == nil) {
 		fatal("Subset specified without specifying partion in header")
 	}
+	selected := make(int[])
+	for _, partition := step.Selection.Subset.Indices {
+		selected = append(selected, subsetPartition[partition])
+	}
+	return selected
 }
 
 
