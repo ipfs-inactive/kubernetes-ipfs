@@ -2,11 +2,36 @@
 
 kubernetes-ipfs works with both a full kubernetes deployment, or the [minikube](https://kubernetes.io/docs/getting-started-guides/minikube/) all-in-one system
 
-## With Minikube
+# PreRequisites: 
+
+Go install and configured [golang](https://golang.org/doc/install)
+$GOPATH, $GOROOT and $GOBIN in environment [configure Go](https://golang.org/doc/install)
+'/usr/local/bin/' is in $PATH
+
+# Install go dependencies  
+
+`go get github.com/fatih/color`
+`go get github.com/davecgh/go-spew/spew`
+`go get gopkg.in/yaml.v2`
+
+# Install Minikube using Mac OS X 
+
+`curl -Lo minikube https://storage.googleapis.com/minikube/releases/v0.17.1/minikube-darwin-amd64 && chmod +x minikube && sudo mv minikube /usr/local/bin/` to download and save minikube 
+
+# Install Minikube using Linux 
+
+`curl -Lo minikube https://storage.googleapis.com/minikube/releases/v0.17.1/minikube-linux-amd64 && chmod +x minikube && sudo mv minikube /usr/local/bin/` to download and save minikube 
+
+## With Minikube as you cluster 
 
 `./reset-minikube.sh` to set minikube up in a clean state
 
 `./init.sh` to create go-ipfs and grafana deployments on minikube
+
+## with Minikube to view the cluster 
+
+`minikube dashboard` will open the kubernetes cluster dashboard in your default web browser 
+`minikube ip` to get the cluster's ip address 
 
 ## Running tests
 
