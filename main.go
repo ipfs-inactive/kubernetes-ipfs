@@ -81,7 +81,7 @@ type Selection struct {
 
 // Range is
 type Range struct {
-  Order  int `yaml:order`  /* RANDOM or SEQUENTIAL */
+  Order  string  `yaml:order`  /* RANDOM or SEQUENTIAL */
   Start  int `yaml:start`  /* Valid for SEQUENTIAL */
   End    int `yaml:end`    /* Valid for SEQUENTIAL */
   Number int `yaml:number` /* Valid for RANDOM */  
@@ -89,7 +89,7 @@ type Range struct {
 
 // Percent is
 type Percent struct {
-  Order   int `yaml:order`  /* RANDOM or SEQUENTIAL */
+  Order   string `yaml:order`  /* RANDOM or SEQUENTIAL */
   Start   int `yaml:start`  /* Valid for SEQUENTIAL */
   End     int `yaml:end`    /* Valid for SEQUENTIAL */
   Percent int `yaml:number` /* Valid for RANDOM */  
@@ -118,8 +118,8 @@ type Config struct {
 
 //SubsetParition is
 type SubsetPartition struct {
-  PartitionType    int   `yaml:partion_type`      /* Either EVEN or WEIGHTED */
-  Order            int   `yaml:order`             /* Either RANDOM or SEQUENTIAL */
+  PartitionType    string   `yaml:partion_type`      /* Either EVEN or WEIGHTED */
+  Order            string   `yaml:order`             /* Either RANDOM or SEQUENTIAL */
   Percents         []int `yaml:percents`          /* Valid for WEIGHTED */
   NumberPartitions int   `yaml:number_partitions` /* Valid for EVEN */
 }
@@ -218,7 +218,7 @@ func main() {
 		color.Cyan("## Using " + strconv.Itoa(test.Config.Nodes) + " nodes for this test")
 		env := make([]string, 0)
 		for _, step := range test.Steps {
-			nodeIndices := selectNodes(&step)
+			nodeIndices := selectNodes(&step, test.Config, subsetPartition)
 			env = handleStep(*pods, &step, &summary, env, nodeIndices)
 		}
 		summary.TestsRan = summary.TestsRan + 1
@@ -265,13 +265,13 @@ func handleStep(pods GetPodsOutput, step *Step, summary *Summary, env []string, 
 	// Initialize a channel with depth of number of nodes we're testing on simultaneously
 	outputStrings := make(chan []string, numNodes)
 	outputErr := make(chan bool, numNodes)
-	for j := step.OnNode; j <= endNode; j++ {
+	for j := range nodeIndices {
 		// Hand this channel to the pod runner and let it fill the queue
-		runInPodAsync(pods.Items[step.OnNode-1].Metadata.Name, step.CMD, env, step.Timeout, outputStrings, outputErr)
+		runInPodAsync(pods.Items[j].Metadata.Name, step.CMD, env, step.Timeout, outputStrings, outputErr)
 	}
 	// Iterate through the queue to pull out results one-by-one
 	// These may be out of order, but is there a better way to do this? Do we need them in order?
-	for j := step.OnNode; j <= endNode; j++ {
+	for j := 0; j < numNodes; j++ {
 		out := <-outputStrings
 		err := <-outputErr
 		if err {
@@ -486,7 +486,7 @@ func runInPod(name string, cmdToRun string, env []string, timeout int) ([]string
 	return lines[:len(lines)-1], timeout_reached
 }
 
-func selectNodes(step Step, config Config) []int{
+func selectNodes(step *Step, config Config, subsetPartition map[int][]int) []int{
 	/* Handle OnNode EndNode syntax */
 	if step.OnNode > 0 {
 		if step.Selection != nil {
@@ -507,55 +507,62 @@ func selectNodes(step Step, config Config) []int{
 		} else if (step.Selection.Range != nil) {
 			return selectNodesRange(step, config)
 		} else if (step.Selection.Percent != nil) {
-			return selectNodesRange(step)
+			return selectNodesRange(step, config)
 		} else /* Subset selection */ {
 			return selectNodesSubset(step, subsetPartition)
 		}
 	}
+	/* Should not get here, keeping compiler happy for now*/
+	fatal("Should not reach!")
+	return nil
 }
 
-func selectNodesRange(step Step, config Config) []int{
+func selectNodesRange(step *Step, config Config) []int{
+	var selection []int
 	if step.Selection.Range.Order == SEQUENTIAL {
 	  if step.Selection.Range.Start <=0 || 
-			step.Selection.Range.End - step.Selection.Range.Start +1 > config.nodes {
+			step.Selection.Range.End - step.Selection.Range.Start +1 > config.Nodes {
 				fatal("Invalid range")
 		}
-		return makeRange(step.Selection.Range.Start, step.Selection.Range.End)
+		selection = makeRange(step.Selection.Range.Start, step.Selection.Range.End)
 	} else if step.Selection.Range.Order == RANDOM {
-		if step.Selection.Range.Number > config.nodes {
+		if step.Selection.Range.Number > config.Nodes {
 			fatal("Invalid range")
 		}
-		return rand.Perm(config.nodes)[0:step.Selection.Range.Number]
+		selection = rand.Perm(config.Nodes)[0:step.Selection.Range.Number]
 
 	} else /* Invalid order */ {
 			fatal("Invalid Selection format. Order must be SEQUENTIAL or RANDOM ")
 	}
+	return selection
 } 
 
-func selectNodesPercent(step Step, config Config) []int {
+func selectNodesPercent(step *Step, config Config) []int {
 	var percent int
+	var selection []int
 	percent = step.Selection.Percent.Percent
 	if percent > 100 || percent < 0 {
 		fatal("Invalid percent")
 	}
-	numNodes = int( (float64(percent) / 100.0) * float64(config.nodes) )
+	numNodes := int( (float64(percent) / 100.0) * float64(config.Nodes) )
 	if step.Selection.Percent.Order == SEQUENTIAL {
-		if step.Selection.Percent.Start -1 + numNodes > config.nodes {
+		if step.Selection.Percent.Start -1 + numNodes > config.Nodes {
 			fatal("Invalid start position")
 		}
-		return makeRange(step.Selection.Percent.Start, step.Selection.Percent.Start -1 + numNodes)
+		selection = makeRange(step.Selection.Percent.Start, step.Selection.Percent.Start -1 + numNodes)
 	} else if step.Selection.Percent.Order == RANDOM {
-		return rand.Perm(config.nodes)[0:numNodes]
+		selection = rand.Perm(config.Nodes)[0:numNodes]
 	} else /* Invalid order */ {
 		fatal("Invalid Selection format. Order must be SEQUENTIAL or RANDOM ")
 	}
+	return selection
 }
 
-func selectNodesSubset(step Step, subsetPartition map[int][]int) []int{
+func selectNodesSubset(step *Step, subsetPartition map[int][]int) []int{
 	if (subsetPartition == nil) {
 		fatal("Subset specified without specifying partion in header")
 	}
-	selected := make([]int)
+	selected := make([]int, 0)
 	for _, partition := range step.Selection.Subset.Indices {
 		selected = append(selected, subsetPartition[partition]...)
 	}
@@ -563,59 +570,57 @@ func selectNodesSubset(step Step, subsetPartition map[int][]int) []int{
 }
 
 
-func partition(config Config) {
-	if config.SubsetPartiton == nil {
+func partition(config Config) map[int][]int{
+	if config.SubsetPartition == nil {
 		return nil
 	} 
 	partitionMap := make(map[int][]int)
 
 	if config.SubsetPartition.Order == SEQUENTIAL {
 		if config.SubsetPartition.PartitionType == EVEN {
-			seqEvenPartition(&partitionMap, config.SubsetPartition.NumberPartitions, config.nodes)
-			return partitionMap
+			seqEvenPartition(&partitionMap, config.SubsetPartition.NumberPartitions, config.Nodes)
 		} else if config.SubsetPartition.PartitionType == WEIGHTED {
-			seqWeightedPartition(&partitionMap, config.nodes)
+			seqWeightedPartition(&partitionMap, config.SubsetPartition.Percents, config.Nodes)
 		} else /* invalid partition type */{
 				fatal("Invalid partition type")
 		}
 	} else if config.SubsetPartition.Order == RANDOM {
 		if config.SubsetPartition.PartitionType == EVEN {
-			randEvenPartition(&partitionMap)
-			return partitionMap
+			randEvenPartition(&partitionMap, config.SubsetPartition.NumberPartitions, config.Nodes)
 		} else if config.SubsetPartition.PartitionType == WEIGHTED {
-			randWeightedPartition(&partitionMap)
-			return partitionMap
+			randWeightedPartition(&partitionMap, config.SubsetPartition.Percents, config.Nodes)
 		} else /* invalid partition type */{
 				fatal("Invalid partition type")
 		}
 	} else { /* invalid ordering */
 		fatal("Partition has invalid order")
 	}
+	return partitionMap
 }
 
-func seqEvenPartition(partitionMap map[int][]int, numSubsets int, numNodes int) {
-	for i := range numSubsets {
+func seqEvenPartition(partitionMap *map[int][]int, numSubsets int, numNodes int) {
+	for i := 0; i < numSubsets; i++ {
 		startNode, endNode := getSubsetBounds(i, numSubsets, numNodes)
-		partitionMap[i] = makeRange(startNode, endNode)
+		(*partitionMap)[i] = makeRange(startNode, endNode)
 	}
 }
 
-func randEvenPartition(partitionMap map[int][]int, numSubsets int, numNodes int) {
+func randEvenPartition(partitionMap *map[int][]int, numSubsets int, numNodes int) {
 	sample := rand.Perm(numNodes)
-	for i := range numSubsets {
+	for i := 0; i < numSubsets; i++ {
 		startNode, endNode := getSubsetBounds(i, numSubsets, numNodes)
-		partitionMap[i] = sample[startNode -1:endNode -1]
+		(*partitionMap)[i] = sample[startNode -1:endNode -1]
 	}
 }
 
-func weightedPartition(partitionMap map[int][]int, percents []int, numNodes int, random bool){
+func weightedPartition(partitionMap *map[int][]int, percents []int, numNodes int, random bool){
 	/* Get all of the node nums for each partition, then spread 
 	   out leftovers from rounding among the earliest subsets */
 	if len(percents) > numNodes {
 		fatal("No more partitions than number of nodes")
 	}
 	/* Calculate size of each partitions */
-	partitionSize := make([]int)
+	partitionSize := make([]int, 0)
 	var size, sum, leftovers, acc int
 	sum = 0
 	for _, percent := range percents {
@@ -638,17 +643,17 @@ func weightedPartition(partitionMap map[int][]int, percents []int, numNodes int,
 			leftovers -= 1
 			size += 1
 		}
-		partitionMap[i] = sample[acc:size]
+		(*partitionMap)[i] = sample[acc:size]
 		acc = size
 	}
 }
 
 
-func seqWeightedPartition( partitionMap map[int][]int, percents []int, numNodes int) {
+func seqWeightedPartition( partitionMap *map[int][]int, percents []int, numNodes int) {
 	weightedPartition(partitionMap, percents, numNodes, false)
 }
 
-func randWeightedPartition( partitionMap map[int][]int, percents []int, numNodes int) {
+func randWeightedPartition( partitionMap *map[int][]int, percents []int, numNodes int) {
 	weightedPartition(partitionMap, percents, numNodes, true)
 }
 
