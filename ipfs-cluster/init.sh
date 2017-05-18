@@ -3,7 +3,7 @@
 set -e
 
 # echo "Create Monitoring"
-# kubectl create -f ./prometheus-manifests.yml
+kubectl create -f ./prometheus-manifests.yml
 
 echo
 echo "Create go-ipfs deployment"
@@ -40,3 +40,12 @@ for p in $pods; do
     addr=$(echo "/ip4/"`kubectl get pods $p -o jsonpath='{.status.podIP}'`"/tcp/9096/ipfs/"`kubectl exec $p -- ipfs-cluster-ctl --enc json id | jq -r .id`)
     kubectl exec $bootstrapper -- ipfs-cluster-ctl peers add "$addr"
 done
+
+set +ex
+echo
+echo "To access Grafana for viewing metrics gathered by Prometheus, run the following commands:"
+echo
+echo $'pod=$kubectl get pods --namespace=monitoring | grep grafana-core | awk \'{print $1}\''
+echo 'kubectl port-forward --namespace=monitoring $pod 3000:3000'
+echo 
+echo 'Then navigate to localhost:3000 in your browser.'
