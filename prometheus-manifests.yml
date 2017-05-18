@@ -1,4 +1,4 @@
-# From https://github.com/giantswarm/kubernetes-prometheus/blob/0298afd9cbd4a3a6437ba9736fb1b27078008ec5/manifests-all.yaml
+# From https://github.com/giantswarm/kubernetes-prometheus/blob/a925188c663ffb612201399fe7ba32096b2d5b97/manifests-all.yaml
 ---
 apiVersion: v1
 kind: Namespace
@@ -22,7 +22,7 @@ spec:
         component: core
     spec:
       containers:
-      - image: grafana/grafana:4.0.2
+      - image: grafana/grafana:4.1.1
         name: grafana-core
         imagePullPolicy: IfNotPresent
         # env:
@@ -37,11 +37,11 @@ spec:
         env:
           # The following env variables set up basic auth twith the default admin user and admin password.
           - name: GF_AUTH_BASIC_ENABLED
-            value: "true"
-          - name: GF_AUTH_ANONYMOUS_ENABLED
             value: "false"
-          # - name: GF_AUTH_ANONYMOUS_ORG_ROLE
-          #   value: Admin
+          - name: GF_AUTH_ANONYMOUS_ENABLED
+            value: "true"
+          - name: GF_AUTH_ANONYMOUS_ORG_ROLE
+            value: Admin
           # does not really work, because of template variables in exported dashboards:
           # - name: GF_DASHBOARDS_JSON_ENABLED
           #   value: "true"
@@ -1920,7 +1920,7 @@ spec:
             "name": "wait-for-endpoints",
             "image": "giantswarm/tiny-tools",
             "imagePullPolicy": "IfNotPresent",
-            "command": ["fish", "-c", "echo \"waiting for endpoints...\"; while true; set endpoints (curl -s --cacert /var/run/secrets/kubernetes.io/serviceaccount/ca.crt --header \"Authorization: Bearer \"(cat /var/run/secrets/kubernetes.io/serviceaccount/token) https://kubernetes.default.svc/api/v1/namespaces/monitoring/endpoints/grafana); echo $endpoints | jq \".\"; if test (echo $endpoints | jq -r \".subsets[].addresses | length\") -gt 0; exit 0; end; echo \"waiting...\";sleep 1; end"],
+            "command": ["fish", "-c", "echo \"waiting for endpoints...\"; while true; set endpoints (curl -s --cacert /var/run/secrets/kubernetes.io/serviceaccount/ca.crt --header \"Authorization: Bearer \"(cat /var/run/secrets/kubernetes.io/serviceaccount/token) https://kubernetes.default.svc/api/v1/namespaces/monitoring/endpoints/grafana); echo $endpoints | jq \".\"; if test (echo $endpoints | jq -r \".subsets[]?.addresses // [] | length\") -gt 0; exit 0; end; echo \"waiting...\";sleep 1; end"],
             "args": ["monitoring", "grafana"]
           }
         ]'
@@ -1928,7 +1928,6 @@ spec:
       containers:
       - name: grafana-import-dashboards
         image: giantswarm/tiny-tools
-        imagePullPolicy: IfNotPresent
         command: ["/bin/sh", "-c"]
         workingDir: /opt/grafana-import-dashboards
         args:
@@ -1946,8 +1945,9 @@ spec:
             for file in *-dashboard.json ; do
               if [ -e "$file" ] ; then
                 echo "importing $file" &&
-                cat "$file" \
-                | xargs -0 printf '{"dashboard":%s,"overwrite":true,"inputs":[{"name":"DS_PROMETHEUS","type":"datasource","pluginId":"prometheus","value":"prometheus"}]}' \
+                ( echo '{"dashboard":'; \
+                  cat "$file"; \
+                  echo ',"overwrite":true,"inputs":[{"name":"DS_PROMETHEUS","type":"datasource","pluginId":"prometheus","value":"prometheus"}]}' ) \
                 | jq -c '.' \
                 | curl --silent --fail --show-error \
                   --request POST http://admin:admin@grafana:3000/api/dashboards/import \
@@ -1965,16 +1965,6 @@ spec:
       - name: config-volume
         configMap:
           name: grafana-import-dashboards
----
-apiVersion: extensions/v1beta1
-kind: Ingress
-metadata:
-  name: grafana
-  namespace: monitoring
-spec:
-  backend:
-    serviceName: grafana
-    servicePort: 3000
 ---
 apiVersion: v1
 kind: Service
@@ -2119,7 +2109,7 @@ spec:
     spec:
       containers:
       - name: prometheus
-        image: prom/prometheus:v1.4.1
+        image: prom/prometheus:v1.5.2
         args:
           - '-storage.local.retention=6h'
           - '-storage.local.memory-chunks=500000'
@@ -2145,7 +2135,7 @@ spec:
 apiVersion: extensions/v1beta1
 kind: Deployment
 metadata:
-  name: kube-state-metrics-deployment
+  name: kube-state-metrics
   namespace: monitoring
 spec:
   replicas: 1
@@ -2153,11 +2143,10 @@ spec:
     metadata:
       labels:
         app: kube-state-metrics
-        version: "v0.3.0"
     spec:
       containers:
       - name: kube-state-metrics
-        image: gcr.io/google_containers/kube-state-metrics:v0.3.0
+        image: gcr.io/google_containers/kube-state-metrics:v0.4.1
         ports:
         - containerPort: 8080
 ---
@@ -2267,7 +2256,7 @@ spec:
         component: node-exporter
     spec:
       containers:
-      - image: prom/node-exporter:0.12.0
+      - image: prom/node-exporter:v0.14.0
         name: prometheus-node-exporter
         ports:
         - name: prom-node-exp
