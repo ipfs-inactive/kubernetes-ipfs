@@ -25,10 +25,10 @@ var DEBUG = false
 var DEPLOYMENT_NAME = "go-ipfs-stress"
 
 const (
-  RANDOM     = "RANDOM"
-  SEQUENTIAL = "SEQUENTIAL"
-  EVEN       = "EVEN"
-  WEIGHTED   = "WEIGHTED"
+  random     = "RANDOM"
+  sequential = "SEQUENTIAL"
+  even       = "EVEN"
+  weighted   = "WEIGHTED"
 ) 
 
 // Summary is
@@ -99,12 +99,6 @@ type Subset struct {
   Indices []int `yaml:"indices"`
 }
 
-// SubsetOld is
-type SubsetOld struct {
-	Numbers []int `yaml:"numbers"`
-	Total   int   `yaml:"total"`
-}
-
 // Config is
 type Config struct {
 	Nodes           int              `yaml:"nodes"`
@@ -115,7 +109,7 @@ type Config struct {
 	SubsetPartition *SubsetPartition `yaml:"subset_partition"`
 }
 
-//SubsetParition is
+// SubsetParition is
 type SubsetPartition struct {
   PartitionType    string   `yaml:"partition_type"`      /* Either EVEN or WEIGHTED */
   Order            string   `yaml:"order"`             /* Either RANDOM or SEQUENTIAL */
@@ -501,31 +495,28 @@ func selectNodes(step *Step, config Config, subsetPartition map[int][]int) []int
 		return makeRange(step.OnNode, step.EndNode)
 	} else if step.Selection == nil {
 		fatal("No selection method on test step")
-	} else { /* Selection chooses nodes */
-		if (step.Selection.Range == nil && step.Selection.Percent == nil && step.Selection.Subset == nil) {
-			fatal("No selection method on test step")
-		} else if (step.Selection.Range != nil) {
-			return selectNodesRange(step, config)
-		} else if (step.Selection.Percent != nil) {
-			return selectNodesPercent(step, config)
-		} else /* Subset selection */ {
-			return selectNodesSubset(step, subsetPartition)
-		}
+	} 
+	/* Selection chooses nodes */
+	if (step.Selection.Range == nil && step.Selection.Percent == nil && step.Selection.Subset == nil) {
+		fatal("No selection method on test step")
+	} else if (step.Selection.Range != nil) {
+		return selectNodesRange(step, config)
+	} else if (step.Selection.Percent != nil) {
+		return selectNodesPercent(step, config)
 	}
-	/* Should not get here, keeping compiler happy for now*/
-	fatal("Should not reach!")
-	return nil
+	/* Subset selection */ 
+	return selectNodesSubset(step, subsetPartition)	
 }
 
 func selectNodesRange(step *Step, config Config) []int{
 	var selection []int
-	if step.Selection.Range.Order == SEQUENTIAL {
+	if step.Selection.Range.Order == sequential {
 	  if step.Selection.Range.Start <= 0 || 
 			step.Selection.Range.End - step.Selection.Range.Start + 1 > config.Nodes {
 				fatal("Invalid range")
 		}
 		selection = makeRange(step.Selection.Range.Start, step.Selection.Range.End)
-	} else if step.Selection.Range.Order == RANDOM {
+	} else if step.Selection.Range.Order == random {
 		if step.Selection.Range.Number > config.Nodes {
 			fatal("Invalid range")
 		}
@@ -545,12 +536,12 @@ func selectNodesPercent(step *Step, config Config) []int {
 		fatal("Invalid percent")
 	}
 	numNodes := int( (float64(percent) / 100.0) * float64(config.Nodes) )
-	if step.Selection.Percent.Order == SEQUENTIAL {
+	if step.Selection.Percent.Order == sequential {
 		if step.Selection.Percent.Start -1 + numNodes > config.Nodes {
 			fatal("Invalid start position")
 		}
 		selection = makeRange(step.Selection.Percent.Start, step.Selection.Percent.Start -1 + numNodes)
-	} else if step.Selection.Percent.Order == RANDOM {
+	} else if step.Selection.Percent.Order == random {
 		selection = onePerm(config.Nodes)[0:numNodes]
 	} else /* Invalid order */ {
 		fatal("Invalid Selection format. Order must be SEQUENTIAL or RANDOM ")
@@ -576,18 +567,18 @@ func partition(config Config) map[int][]int{
 	} 
 	partitionMap := make(map[int][]int)
 
-	if config.SubsetPartition.Order == SEQUENTIAL {
-		if config.SubsetPartition.PartitionType == EVEN {
+	if config.SubsetPartition.Order == sequential {
+		if config.SubsetPartition.PartitionType == even {
 			seqEvenPartition(&partitionMap, config.SubsetPartition.NumberPartitions, config.Nodes)
-		} else if config.SubsetPartition.PartitionType == WEIGHTED {
+		} else if config.SubsetPartition.PartitionType == weighted {
 			seqWeightedPartition(&partitionMap, config.SubsetPartition.Percents, config.Nodes)
 		} else /* invalid partition type */{
 				fatal("Invalid partition type")
 		}
-	} else if config.SubsetPartition.Order == RANDOM {
-		if config.SubsetPartition.PartitionType == EVEN {
+	} else if config.SubsetPartition.Order == random {
+		if config.SubsetPartition.PartitionType == even {
 			randEvenPartition(&partitionMap, config.SubsetPartition.NumberPartitions, config.Nodes)
-		} else if config.SubsetPartition.PartitionType == WEIGHTED {
+		} else if config.SubsetPartition.PartitionType == weighted {
 			randWeightedPartition(&partitionMap, config.SubsetPartition.Percents, config.Nodes)
 		} else /* invalid partition type */{
 				fatal("Invalid partition type")
@@ -640,8 +631,8 @@ func weightedPartition(partitionMap *map[int][]int, percents []int, numNodes int
 	}
 	for i,size := range partitionSize {
 		if leftovers > 0 {
-			leftovers -= 1
-			size += 1
+			leftovers--
+			size++
 		}
 		(*partitionMap)[i+1] = sample[acc:acc+size]
 		acc = acc + size
@@ -736,7 +727,7 @@ func makeRange(min, max int) []int {
 func onePerm(N int) []int {
 	ret := rand.Perm(N)
 	for i:=0; i < len(ret); i++ {
-		ret[i] += 1
+		ret[i]++
 	}
 	return ret
 }
