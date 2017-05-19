@@ -1,0 +1,29 @@
+name: Test New Range
+config:
+  nodes: 5
+  selector: app=ipfs-cluster
+  times: 1
+  expected:
+      successes: 0
+      failures: 0
+      timeouts: 0
+steps:
+  - name: sequential range over nodes 2 to 4
+    cmd: echo "Sequential Range!" > SEQUENTIAL_RANGE
+    selection:
+      range:
+        order: SEQUENTIAL
+        start: 2
+        end: 4
+  - name: random range over 3 nodes
+    cmd: echo "Random Range 1!" > RANDOM_RANGE_1
+    selection:
+      range:
+        order: RANDOM
+        number: 3
+  - name: random range over 4 nodes
+    cmd: echo "Random Range 2!" > RANDOM_RANGE_2
+    selection:
+      range:
+        order: RANDOM
+        number: 4

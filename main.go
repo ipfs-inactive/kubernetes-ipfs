@@ -74,30 +74,29 @@ type Step struct {
 
 // Selection is
 type Selection struct {
-  Range   *Range   `yaml:range`
-  Percent *Percent `yaml:percent`
-  Subset  *Subset  `yaml:subset`
+  Range   *Range   `yaml:"range"`
+  Percent *Percent `yaml:"percent"`
+  Subset  *Subset  `yaml:"subset"`
 }
 
 // Range is
 type Range struct {
-  Order  string  `yaml:order`  /* RANDOM or SEQUENTIAL */
-  Start  int `yaml:start`  /* Valid for SEQUENTIAL */
-  End    int `yaml:end`    /* Valid for SEQUENTIAL */
-  Number int `yaml:number` /* Valid for RANDOM */  
+  Order  string  `yaml:"order"`  /* RANDOM or SEQUENTIAL */
+  Start  int `yaml:"start"`  /* Valid for SEQUENTIAL */
+  End    int `yaml:"end"`    /* Valid for SEQUENTIAL */
+  Number int `yaml:"number"` /* Valid for RANDOM */  
 }
 
 // Percent is
 type Percent struct {
-  Order   string `yaml:order`  /* RANDOM or SEQUENTIAL */
-  Start   int `yaml:start`  /* Valid for SEQUENTIAL */
-  End     int `yaml:end`    /* Valid for SEQUENTIAL */
-  Percent int `yaml:number` /* Valid for RANDOM */  
+  Order   string `yaml:"order"`  /* RANDOM or SEQUENTIAL */
+  Start   int `yaml:"start"`  /* Valid for SEQUENTIAL */
+  Percent int `yaml:"percent"` /* Valid for RANDOM */  
 }
 
 // Subset is 
 type Subset struct {
-  Indices []int `yaml:indices`
+  Indices []int `yaml:"indices"`
 }
 
 // SubsetOld is
@@ -113,15 +112,15 @@ type Config struct {
 	Times           int              `yaml:"times"`
 	GraceShutdown   time.Duration    `yaml:"grace_shutdown"`
 	Expected        Expected         `yaml:"expected"`
-	SubsetPartition *SubsetPartition `yaml:subset_partition`
+	SubsetPartition *SubsetPartition `yaml:"subset_partition"`
 }
 
 //SubsetParition is
 type SubsetPartition struct {
-  PartitionType    string   `yaml:partion_type`      /* Either EVEN or WEIGHTED */
-  Order            string   `yaml:order`             /* Either RANDOM or SEQUENTIAL */
-  Percents         []int `yaml:percents`          /* Valid for WEIGHTED */
-  NumberPartitions int   `yaml:number_partitions` /* Valid for EVEN */
+  PartitionType    string   `yaml:"partition_type"`      /* Either EVEN or WEIGHTED */
+  Order            string   `yaml:"order"`             /* Either RANDOM or SEQUENTIAL */
+  Percents         []int `yaml:"percents"`          /* Valid for WEIGHTED */
+  NumberPartitions int   `yaml:"number_partitions"` /* Valid for EVEN */
 }
 
 // Expected is
@@ -187,7 +186,9 @@ func main() {
 	   config.  subsetPartion is nil if it is not included in config.  Tests must include this 
 	   in the config in order to use the subset selection method to choose nodes later on during
 	   testing  */
+	rand.Seed(time.Now().UTC().UnixNano())
 	subsetPartition = partition(test.Config)
+	fmt.Printf("The subset Partition: %v", subsetPartition)
 
 	summary.TestsToRun = test.Config.Times
 	summary.Start = time.Now()
@@ -215,10 +216,12 @@ func main() {
 		}
 
 		pods, err := getPods(&test.Config) // Get the pod list after a scale-up
+		fmt.Printf("The pods: %v", pods)
 		color.Cyan("## Using " + strconv.Itoa(test.Config.Nodes) + " nodes for this test")
 		env := make([]string, 0)
 		for _, step := range test.Steps {
 			nodeIndices := selectNodes(&step, test.Config, subsetPartition)
+			fmt.Printf("The indices running on this step: %v", nodeIndices)
 			env = handleStep(*pods, &step, &summary, env, nodeIndices)
 		}
 		summary.TestsRan = summary.TestsRan + 1
@@ -252,7 +255,7 @@ func getSubsetBounds(subset int, numSubsets int, numNodes int) (int, int) {
 }
 
 func handleStep(pods GetPodsOutput, step *Step, summary *Summary, env []string, nodeIndices []int) []string {
-	color.Blue("### Running step %s on nodes %d to %d", step.Name, step.OnNode, step.EndNode)
+	color.Blue("### Running step %s on nodes %v", step.Name, nodeIndices)
 	if len(step.Inputs) != 0 {
 		for _, input := range step.Inputs {
 			color.Blue("### Getting variable " + input)
@@ -265,9 +268,9 @@ func handleStep(pods GetPodsOutput, step *Step, summary *Summary, env []string, 
 	// Initialize a channel with depth of number of nodes we're testing on simultaneously
 	outputStrings := make(chan []string, numNodes)
 	outputErr := make(chan bool, numNodes)
-	for j := range nodeIndices {
+	for _, idx := range nodeIndices {
 		// Hand this channel to the pod runner and let it fill the queue
-		runInPodAsync(pods.Items[j].Metadata.Name, step.CMD, env, step.Timeout, outputStrings, outputErr)
+		runInPodAsync(pods.Items[idx - 1].Metadata.Name, step.CMD, env, step.Timeout, outputStrings, outputErr)
 	}
 	// Iterate through the queue to pull out results one-by-one
 	// These may be out of order, but is there a better way to do this? Do we need them in order?
@@ -505,9 +508,10 @@ func selectNodes(step *Step, config Config, subsetPartition map[int][]int) []int
 		if (step.Selection.Range == nil && step.Selection.Percent == nil && step.Selection.Subset == nil) {
 			fatal("No selection method on test step")
 		} else if (step.Selection.Range != nil) {
+			fmt.Printf("Range options %v", step.Selection.Range)
 			return selectNodesRange(step, config)
 		} else if (step.Selection.Percent != nil) {
-			return selectNodesRange(step, config)
+			return selectNodesPercent(step, config)
 		} else /* Subset selection */ {
 			return selectNodesSubset(step, subsetPartition)
 		}
@@ -520,8 +524,8 @@ func selectNodes(step *Step, config Config, subsetPartition map[int][]int) []int
 func selectNodesRange(step *Step, config Config) []int{
 	var selection []int
 	if step.Selection.Range.Order == SEQUENTIAL {
-	  if step.Selection.Range.Start <=0 || 
-			step.Selection.Range.End - step.Selection.Range.Start +1 > config.Nodes {
+	  if step.Selection.Range.Start <= 0 || 
+			step.Selection.Range.End - step.Selection.Range.Start + 1 > config.Nodes {
 				fatal("Invalid range")
 		}
 		selection = makeRange(step.Selection.Range.Start, step.Selection.Range.End)
@@ -529,7 +533,7 @@ func selectNodesRange(step *Step, config Config) []int{
 		if step.Selection.Range.Number > config.Nodes {
 			fatal("Invalid range")
 		}
-		selection = rand.Perm(config.Nodes)[0:step.Selection.Range.Number]
+		selection = onePerm(config.Nodes)[0:step.Selection.Range.Number]
 
 	} else /* Invalid order */ {
 			fatal("Invalid Selection format. Order must be SEQUENTIAL or RANDOM ")
@@ -551,7 +555,7 @@ func selectNodesPercent(step *Step, config Config) []int {
 		}
 		selection = makeRange(step.Selection.Percent.Start, step.Selection.Percent.Start -1 + numNodes)
 	} else if step.Selection.Percent.Order == RANDOM {
-		selection = rand.Perm(config.Nodes)[0:numNodes]
+		selection = onePerm(config.Nodes)[0:numNodes]
 	} else /* Invalid order */ {
 		fatal("Invalid Selection format. Order must be SEQUENTIAL or RANDOM ")
 	}
@@ -595,21 +599,24 @@ func partition(config Config) map[int][]int{
 	} else { /* invalid ordering */
 		fatal("Partition has invalid order")
 	}
+	fmt.Printf("The partition map %v", partitionMap)
 	return partitionMap
 }
 
 func seqEvenPartition(partitionMap *map[int][]int, numSubsets int, numNodes int) {
-	for i := 0; i < numSubsets; i++ {
+	for i := 1; i <= numSubsets; i++ {
 		startNode, endNode := getSubsetBounds(i, numSubsets, numNodes)
 		(*partitionMap)[i] = makeRange(startNode, endNode)
 	}
+	fmt.Printf("The partitionMap in innermost %v", partitionMap)
 }
 
 func randEvenPartition(partitionMap *map[int][]int, numSubsets int, numNodes int) {
-	sample := rand.Perm(numNodes)
-	for i := 0; i < numSubsets; i++ {
+	sample := onePerm(numNodes)
+	for i := 1; i <= numSubsets; i++ {
 		startNode, endNode := getSubsetBounds(i, numSubsets, numNodes)
-		(*partitionMap)[i] = sample[startNode -1:endNode -1]
+		fmt.Printf("startNode: %d, endNode: %d\n", startNode, endNode)
+		(*partitionMap)[i] = sample[startNode -1:endNode]
 	}
 }
 
@@ -634,7 +641,7 @@ func weightedPartition(partitionMap *map[int][]int, percents []int, numNodes int
 	acc = 0
 	var sample []int
 	if random {
-		sample = rand.Perm(numNodes)
+		sample = onePerm(numNodes)
 	} else { /* sequential */
 		sample = makeRange(1, numNodes)
 	}
@@ -643,8 +650,9 @@ func weightedPartition(partitionMap *map[int][]int, percents []int, numNodes int
 			leftovers -= 1
 			size += 1
 		}
-		(*partitionMap)[i] = sample[acc:size]
-		acc = size
+		fmt.Printf("acc: %d, size %d, acc+size-1: %d, slice:%v\n", acc, size, acc+size-1, sample[acc:acc+size])
+		(*partitionMap)[i+1] = sample[acc:acc+size]
+		acc = acc + size
 	}
 }
 
@@ -731,4 +739,12 @@ func makeRange(min, max int) []int {
 		a[i] = min + i
 	}
 	return a
+}
+
+func onePerm(N int) []int {
+	ret := rand.Perm(N)
+	for i:=0; i < len(ret); i++ {
+		ret[i] += 1
+	}
+	return ret
 }

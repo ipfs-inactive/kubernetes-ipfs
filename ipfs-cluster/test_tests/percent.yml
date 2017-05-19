@@ -1,0 +1,36 @@
+name: Test New Percent
+config:
+  nodes: 5
+  selector: app=ipfs-cluster
+  times: 1
+  expected:
+      successes: 0
+      failures: 0
+      timeouts: 0
+steps:
+  - name: Even percentage starting at node 1 (1 & 2)
+    cmd: echo "Percent starting at 1 reaching 2" > PERCENT_START1_REACH2
+    selection:
+      percent:
+        order: SEQUENTIAL
+        start: 1
+        percent: 40
+  - name: Truncating percentage starting at 3 (3 & 4)
+    cmd: echo "Percent starting at 3 reaching 4 should not reach 5" > PERCENT_START3_REACH4
+    selection:
+      percent:
+        order: SEQUENTIAL
+        start: 3
+        percent: 50
+  - name: Random even percentage
+    cmd: echo "Random Percentage A, appear on 3 nodes" > PERCENT_A_3_NODES
+    selection:
+      percent:
+        order: RANDOM
+        percent: 60
+  - name: Random truncating percentage
+    cmd: echo "Random Percentage B, appear on 2 nodes" > PERCENT_B_3_NODES
+    selection:
+      percent:
+        order: RANDOM
+        percent: 50

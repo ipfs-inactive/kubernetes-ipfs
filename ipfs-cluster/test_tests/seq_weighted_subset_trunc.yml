@@ -1,0 +1,29 @@
+name: Test sequential weighted subset divisions with truncation
+config:
+  nodes: 5
+  selector: app=ipfs-cluster
+  times: 1
+  expected:
+      successes: 0
+      failures: 0
+      timeouts: 0
+  subset_partition:
+    partition_type: WEIGHTED
+    order: SEQUENTIAL
+    percents: [50, 20, 30] #Should be 1,2,3 ; 4 ; 5
+steps:
+  - name: run on 1,2,3
+    cmd: echo "Running on 1 2 3" > RUNNING_1_2_3
+    selection:
+      subset:
+        indices: [1]
+  - name: run on 1,2,3,4
+    cmd: echo "Running on 1,2,3,4" > RUNNING_1_2_3_4
+    selection:
+      subset:
+        indices: [1,2]
+  - name: run on 5
+    cmd: echo "Running on 5" > RUNNING_5
+    selection:
+      subset:
+        indices: [3]

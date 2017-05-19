@@ -1,0 +1,19 @@
+name: Test sequential even subset divisions
+config:
+  nodes: 5
+  selector: app=ipfs-cluster
+  times: 1
+  expected:
+      successes: 0
+      failures: 0
+      timeouts: 0
+  subset_partition:
+    partition_type: EVEN
+    order: SEQUENTIAL
+    number_partitions: 5
+steps:
+  - name: run on odd nodes 1, 3, 5
+    cmd: echo "Odd node"
+    selection:
+      subset:
+        indices: [1, 3, 5]
