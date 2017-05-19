@@ -188,7 +188,6 @@ func main() {
 	   testing  */
 	rand.Seed(time.Now().UTC().UnixNano())
 	subsetPartition = partition(test.Config)
-	fmt.Printf("The subset Partition: %v", subsetPartition)
 
 	summary.TestsToRun = test.Config.Times
 	summary.Start = time.Now()
@@ -216,12 +215,10 @@ func main() {
 		}
 
 		pods, err := getPods(&test.Config) // Get the pod list after a scale-up
-		fmt.Printf("The pods: %v", pods)
 		color.Cyan("## Using " + strconv.Itoa(test.Config.Nodes) + " nodes for this test")
 		env := make([]string, 0)
 		for _, step := range test.Steps {
 			nodeIndices := selectNodes(&step, test.Config, subsetPartition)
-			fmt.Printf("The indices running on this step: %v", nodeIndices)
 			env = handleStep(*pods, &step, &summary, env, nodeIndices)
 		}
 		summary.TestsRan = summary.TestsRan + 1
@@ -508,7 +505,6 @@ func selectNodes(step *Step, config Config, subsetPartition map[int][]int) []int
 		if (step.Selection.Range == nil && step.Selection.Percent == nil && step.Selection.Subset == nil) {
 			fatal("No selection method on test step")
 		} else if (step.Selection.Range != nil) {
-			fmt.Printf("Range options %v", step.Selection.Range)
 			return selectNodesRange(step, config)
 		} else if (step.Selection.Percent != nil) {
 			return selectNodesPercent(step, config)
@@ -599,7 +595,6 @@ func partition(config Config) map[int][]int{
 	} else { /* invalid ordering */
 		fatal("Partition has invalid order")
 	}
-	fmt.Printf("The partition map %v", partitionMap)
 	return partitionMap
 }
 
@@ -608,14 +603,12 @@ func seqEvenPartition(partitionMap *map[int][]int, numSubsets int, numNodes int)
 		startNode, endNode := getSubsetBounds(i, numSubsets, numNodes)
 		(*partitionMap)[i] = makeRange(startNode, endNode)
 	}
-	fmt.Printf("The partitionMap in innermost %v", partitionMap)
 }
 
 func randEvenPartition(partitionMap *map[int][]int, numSubsets int, numNodes int) {
 	sample := onePerm(numNodes)
 	for i := 1; i <= numSubsets; i++ {
 		startNode, endNode := getSubsetBounds(i, numSubsets, numNodes)
-		fmt.Printf("startNode: %d, endNode: %d\n", startNode, endNode)
 		(*partitionMap)[i] = sample[startNode -1:endNode]
 	}
 }
@@ -650,7 +643,6 @@ func weightedPartition(partitionMap *map[int][]int, percents []int, numNodes int
 			leftovers -= 1
 			size += 1
 		}
-		fmt.Printf("acc: %d, size %d, acc+size-1: %d, slice:%v\n", acc, size, acc+size-1, sample[acc:acc+size])
 		(*partitionMap)[i+1] = sample[acc:acc+size]
 		acc = acc + size
 	}
