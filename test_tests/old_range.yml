@@ -1,7 +1,7 @@
 name: Test old Onstep Endstep
 config:
   nodes: 5
-  selector: app=ipfs-cluster
+  selector: run=go-ipfs-stress
   times: 1
   expected:
       successes: 0

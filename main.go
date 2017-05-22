@@ -72,7 +72,38 @@ type Step struct {
 	WriteToFile string      `yaml:"write_to_file"`
 }
 
-// Selection is
+/* Selection is used to pick nodes for running commands 
+each step takes a selection object which allows
+   tests to specify nodes in 3 ways
+
+   1: Select nodes by range like with OnNode EndNode
+      - Can choose Start and End
+      - Can choose Number, and Number of random nodes will run
+      **Example**
+      selection:
+        range:
+          order: SEQUENTIAL
+          start: 1
+          end: 10
+
+
+   2: Select percentage of nodes to run
+      - Can choose Start, Percentage (run 30 % of nodes starting at node 2)
+      - Can choose Percentage (run 30 % of nodes choosing at random)
+      **Example**
+      selection:
+        percent: 
+          order: RANDOM
+          percent: 33
+
+   3: Select a subset of nodes to run
+      - Choose "subset indices" which are specified in the configuration
+      - One partition of nodes into subsets per test
+      **Example**
+      selection:
+        subset:
+          indices: [4, 7, 8]
+*/ 
 type Selection struct {
   Range   *Range   `yaml:"range"`
   Percent *Percent `yaml:"percent"`
@@ -212,7 +243,7 @@ func main() {
 		color.Cyan("## Using " + strconv.Itoa(test.Config.Nodes) + " nodes for this test")
 		env := make([]string, 0)
 		for _, step := range test.Steps {
-			nodeIndices := selectNodes(&step, test.Config, subsetPartition)
+			nodeIndices := selectNodes(step, test.Config, subsetPartition)
 			env = handleStep(*pods, &step, &summary, env, nodeIndices)
 		}
 		summary.TestsRan = summary.TestsRan + 1
@@ -480,23 +511,24 @@ func runInPod(name string, cmdToRun string, env []string, timeout int) ([]string
 	return lines[:len(lines)-1], timeout_reached
 }
 
-func selectNodes(step *Step, config Config, subsetPartition map[int][]int) []int{
+func selectNodes(step Step, config Config, subsetPartition map[int][]int) []int{
 	/* Handle OnNode EndNode syntax */
-	if step.OnNode > 0 {
-		if step.Selection != nil {
-			fatal("Two node selection methods on test step")
-		}
-		if step.EndNode == 0 {
-			step.EndNode = step.OnNode
-			selected := make([]int, 1)
-			selected[0] = step.OnNode
-			return selected
-		}
-		return makeRange(step.OnNode, step.EndNode)
-	} else if step.Selection == nil {
+	var nodes []int
+	if  step.OnNode <= 0 && step.Selection == nil {
 		fatal("No selection method on test step")
-	} 
-	/* Selection chooses nodes */
+	} else if step.OnNode > 0 && step.Selection != nil {
+		fatal("Two node selection methods on test step")
+	} else if step.OnNode > 0 {
+		nodes = selectNodesFromOnStep(step)
+	} else if step.Selection != nil {
+		nodes = selectNodesFromSelection(step, config, subsetPartition)
+	} else {
+		fatal("Unexpected selection input")
+	}
+	return nodes
+}
+
+func selectNodesFromSelection(step Step, config Config, subsetPartition map[int][]int) []int{
 	if (step.Selection.Range == nil && step.Selection.Percent == nil && step.Selection.Subset == nil) {
 		fatal("No selection method on test step")
 	} else if (step.Selection.Range != nil) {
@@ -508,7 +540,19 @@ func selectNodes(step *Step, config Config, subsetPartition map[int][]int) []int
 	return selectNodesSubset(step, subsetPartition)	
 }
 
-func selectNodesRange(step *Step, config Config) []int{
+func selectNodesFromOnStep(step Step) []int {
+	if step.Selection != nil {
+		fatal("Two node selection methods on test step")
+	}
+	if step.EndNode == 0 {
+		selected := make([]int, 1)
+		selected[0] = step.OnNode
+		return selected
+	}
+	return makeRange(step.OnNode, step.EndNode)
+}
+
+func selectNodesRange(step Step, config Config) []int{
 	var selection []int
 	if step.Selection.Range.Order == sequential {
 	  if step.Selection.Range.Start <= 0 || 
@@ -528,7 +572,7 @@ func selectNodesRange(step *Step, config Config) []int{
 	return selection
 } 
 
-func selectNodesPercent(step *Step, config Config) []int {
+func selectNodesPercent(step Step, config Config) []int {
 	var percent int
 	var selection []int
 	percent = step.Selection.Percent.Percent
@@ -549,7 +593,7 @@ func selectNodesPercent(step *Step, config Config) []int {
 	return selection
 }
 
-func selectNodesSubset(step *Step, subsetPartition map[int][]int) []int{
+func selectNodesSubset(step Step, subsetPartition map[int][]int) []int{
 	if (subsetPartition == nil) {
 		fatal("Subset specified without specifying partion in header")
 	}
@@ -569,17 +613,17 @@ func partition(config Config) map[int][]int{
 
 	if config.SubsetPartition.Order == sequential {
 		if config.SubsetPartition.PartitionType == even {
-			seqEvenPartition(&partitionMap, config.SubsetPartition.NumberPartitions, config.Nodes)
+			seqEvenPartition(partitionMap, config.SubsetPartition.NumberPartitions, config.Nodes)
 		} else if config.SubsetPartition.PartitionType == weighted {
-			seqWeightedPartition(&partitionMap, config.SubsetPartition.Percents, config.Nodes)
+			seqWeightedPartition(partitionMap, config.SubsetPartition.Percents, config.Nodes)
 		} else /* invalid partition type */{
 				fatal("Invalid partition type")
 		}
 	} else if config.SubsetPartition.Order == random {
 		if config.SubsetPartition.PartitionType == even {
-			randEvenPartition(&partitionMap, config.SubsetPartition.NumberPartitions, config.Nodes)
+			randEvenPartition(partitionMap, config.SubsetPartition.NumberPartitions, config.Nodes)
 		} else if config.SubsetPartition.PartitionType == weighted {
-			randWeightedPartition(&partitionMap, config.SubsetPartition.Percents, config.Nodes)
+			randWeightedPartition(partitionMap, config.SubsetPartition.Percents, config.Nodes)
 		} else /* invalid partition type */{
 				fatal("Invalid partition type")
 		}
@@ -589,22 +633,22 @@ func partition(config Config) map[int][]int{
 	return partitionMap
 }
 
-func seqEvenPartition(partitionMap *map[int][]int, numSubsets int, numNodes int) {
+func seqEvenPartition(partitionMap map[int][]int, numSubsets int, numNodes int) {
 	for i := 1; i <= numSubsets; i++ {
 		startNode, endNode := getSubsetBounds(i, numSubsets, numNodes)
-		(*partitionMap)[i] = makeRange(startNode, endNode)
+		partitionMap[i] = makeRange(startNode, endNode)
 	}
 }
 
-func randEvenPartition(partitionMap *map[int][]int, numSubsets int, numNodes int) {
+func randEvenPartition(partitionMap map[int][]int, numSubsets int, numNodes int) {
 	sample := onePerm(numNodes)
 	for i := 1; i <= numSubsets; i++ {
 		startNode, endNode := getSubsetBounds(i, numSubsets, numNodes)
-		(*partitionMap)[i] = sample[startNode -1:endNode]
+		partitionMap[i] = sample[startNode -1:endNode]
 	}
 }
 
-func weightedPartition(partitionMap *map[int][]int, percents []int, numNodes int, random bool){
+func weightedPartition(partitionMap map[int][]int, percents []int, numNodes int, random bool){
 	/* Get all of the node nums for each partition, then spread 
 	   out leftovers from rounding among the earliest subsets */
 	if len(percents) > numNodes {
@@ -634,17 +678,17 @@ func weightedPartition(partitionMap *map[int][]int, percents []int, numNodes int
 			leftovers--
 			size++
 		}
-		(*partitionMap)[i+1] = sample[acc:acc+size]
+		partitionMap[i+1] = sample[acc:acc+size]
 		acc = acc + size
 	}
 }
 
 
-func seqWeightedPartition( partitionMap *map[int][]int, percents []int, numNodes int) {
+func seqWeightedPartition( partitionMap map[int][]int, percents []int, numNodes int) {
 	weightedPartition(partitionMap, percents, numNodes, false)
 }
 
-func randWeightedPartition( partitionMap *map[int][]int, percents []int, numNodes int) {
+func randWeightedPartition( partitionMap map[int][]int, percents []int, numNodes int) {
 	weightedPartition(partitionMap, percents, numNodes, true)
 }
 
