@@ -1,0 +1,18 @@
+name: Fail selection validate when any one step is invalid
+config:
+  nodes: 5
+  selector: run=go-ipfs-stress
+  times: 1
+  expected:
+      successes: 0
+      failures: 0
+      timeouts: 0
+steps:
+  - name: valid selection
+    cmd: echo "Should not execute" > should_not_exist.txt
+    on_node: 1
+  - name: valid selection again
+    cmd: echo "Also should not execute" > should_not_exist2.txt
+    on_node: 1
+  - name: invalid selection
+    cmd: echo "Not selected for any node should fail" > should_not_exist3.txt

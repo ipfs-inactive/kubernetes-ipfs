@@ -1,0 +1,12 @@
+name: Fail selection validate because no selection in step
+config:
+  nodes: 5
+  selector: run=go-ipfs-stress
+  times: 1
+  expected:
+      successes: 0
+      failures: 0
+      timeouts: 0
+steps:
+  - name: no selection fails
+    cmd: echo "Should not execute" > should_not_exist.txt

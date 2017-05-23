@@ -1,0 +1,15 @@
+name: Fail selection validation when subset is used without specifying in config
+config:
+  nodes: 5
+  selector: run=go-ipfs-stress
+  times: 1
+  expected:
+      successes: 0
+      failures: 0
+      timeouts: 0
+steps:
+  - name: selecting subsets without specifying partition
+    cmd: echo "Should not execute" > should_not_exist.txt
+    selection:
+      subset:
+       indices: [1]
