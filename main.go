@@ -21,7 +21,7 @@ import (
 )
 
 // DEBUG decides if we should have debug output enabled or not
-var DEBUG = true
+var DEBUG = false
 
 var DEPLOYMENT_NAME = "go-ipfs-stress"
 
@@ -553,7 +553,6 @@ func selectNodesFromOnStep(step Step) []int {
 }
 
 func selectNodesRange(step Step, config Config) []int {
-	/* TODO Switch statement and failure can be taken away */
 	var selection []int
 	switch step.Selection.Range.Order {
 	case sequential:
@@ -591,7 +590,7 @@ func validateError(stepNum int, errorStr string) error {
 
 func validateSelections(steps []Step, subsetPartition map[int][]int, config Config) error {
 	for idx, step := range steps {
-		/* Ensure exactly one selection method */
+		/* Exactly one of on_node or selection per step */
 		if step.OnNode <= 0 && step.Selection == nil {
 			return validateError(idx, "No selection method")
 		}
@@ -601,15 +600,14 @@ func validateSelections(steps []Step, subsetPartition map[int][]int, config Conf
 		if step.OnNode > 0 {
 			continue
 		}
-		/* If method is selection, exactly one selection format is used */
+		/* Selection specific verification */
 		switch {
+		/* If method is selection, exactly one selection format is used */
 		case step.Selection.Range == nil && step.Selection.Percent == nil && step.Selection.Subset == nil:
 			return validateError(idx, "No selection method")
 		case step.Selection.Range != nil && step.Selection.Percent != nil ||
 			step.Selection.Range != nil && step.Selection.Subset != nil ||
 			step.Selection.Percent != nil && step.Selection.Subset != nil:
-			fmt.Println("Two selection formats being validated")
-
 			return validateError(idx, "Two selection formats")
 		case step.Selection.Range != nil:
 			switch step.Selection.Range.Order {
@@ -657,7 +655,6 @@ func partition(config Config) (map[int][]int, error) {
 	}
 	partitionMap := make(map[int][]int)
 	var err error
-	/* TODO switch statement and bubble up errors */
 	switch config.SubsetPartition.Order {
 	case sequential:
 		switch config.SubsetPartition.PartitionType {
