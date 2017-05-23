@@ -227,11 +227,18 @@ func init() {
 }
 
 func main() {
-	if len(os.Args) != 2 {
-		fmt.Println("Usage: ", os.Args[0], "<testfile>")
+	args := os.Args
+	if len(args) < 2 {
+		fmt.Println("Usage: ", args[0], "<testfile>")
 		os.Exit(1)
 	}
-	filePath := os.Args[1]
+
+	var params = make(map[string]string)
+	if len(args) > 2 {
+		params = parseArgs(args[2:])
+	}
+
+	filePath := args[1]
 	debug("## Loading " + filePath)
 
 	test, err := readTestFile(filePath)
@@ -239,7 +246,12 @@ func main() {
 		fatal(err)
 	}
 
-	subsetPartition, err := partition(test.Config)
+	fileData = replaceAllParams(fileData, params)
+
+	var test Test
+	var summary Summary
+
+	err = yaml.Unmarshal([]byte(fileData), &test)
 	if err != nil {
 		fatal(err)
 	}
@@ -332,41 +344,63 @@ func PrintResults(summary Summary, test Test) {
 	os.Exit(evaluateOutcome(summary, test.Config.Expected)) // Returns success on all tests to OS; this allows for test scripting.
 }
 
-func getSubsetBounds(subset int, numSubsets int, numNodes int) (int, int) {
-	var offset1 int
-	if (((subset - 1) * numNodes) % numSubsets) > 0 {
-		offset1 = 1
-	} else {
-		offset1 = 0
-	}
-	startNode := 1 + (subset-1)*numNodes/numSubsets + offset1
+/* parse all input args of the form `parameter=value`, e.g. `X=5` */
+func parseArgs(args []string) map[string]string {
+	parsedArgs := make(map[string]string)
+	for _, arg := range args {
+		splitArgs := strings.Split(arg, "=")
+		if len(splitArgs) != 2 {
+			fmt.Println("Bad assignment: " + arg)
+			os.Exit(1)
+		}
 
-	var offset2 int
-	if ((subset * numNodes) % numSubsets) > 0 {
-		offset2 = 1
-	} else {
-		offset2 = 0
+		param, val := splitArgs[0], splitArgs[1]
+		parsedArgs[param] = val
 	}
-	endNode := subset*numNodes/numSubsets + offset2
-
-	return startNode, endNode
+	return parsedArgs
 }
 
-func getStepIterations(step Step, envArrays map[string][]string) int {
-	/* Determine number of iterations */
-	var numIters int
-	if step.For == nil {
-		numIters = 1
-	} else if step.For.IterStructure == "BOUND" {
-		numIters = step.For.Number
-	} else { /* Iterating over an array */
-		numIters = len(envArrays[step.For.IterStructure])
-	}
-	return numIters
+/* resolve all parameters in test file */
+func replaceAllParams(fileData []byte, params map[string]string) []byte {
+	// replace all given parameters with their specified values
+	fileData = replaceInputParams(fileData, params)
+	// replace all other parameters with their default values
+	fileData = replaceDefaultParams(fileData)
+
+	return fileData
 }
 
-func handleStep(pods GetPodsOutput, step *Step, summary *Summary, env []string, envArrays map[string][]string, nodeIndices []int, iter int) ([]string, map[string][]string) {
-	color.Blue("### Running step %s on nodes %v", step.Name, nodeIndices)
+func compileParamRegex(param string) *regexp.Regexp {
+	// matches strings of the form `%{parameter}` and `%{parameter, value}`
+	paramRegex, _ := regexp.Compile("%\\{\\s*" + param + "\\s*(?:,\\s*.*?\\s*)?\\}")
+	return paramRegex
+}
+
+/* resolve all param names (keys in `params` map) to their resp. values */
+func replaceInputParams(fileData []byte, params map[string]string) []byte {
+	for param, val := range params {
+		paramRegex := compileParamRegex(param)
+		fileData = paramRegex.ReplaceAll(fileData, []byte(val))
+	}
+	return fileData
+}
+
+func replaceDefaultParams(fileData []byte) []byte {
+	// matches strings of the form `%{parameter, value}`, captures `value`
+	defaultRegex := regexp.MustCompile("%\\{\\s*(.*?)\\s*,\\s*(.*?)\\s*\\}")
+	defaultParams := defaultRegex.FindAllSubmatch(fileData, -1)
+
+	/* replace all occurrences of `%{parameter, value}` with `value` */
+	for _, defaultParam := range defaultParams {
+		param, val := string(defaultParam[1]), defaultParam[2]
+		paramRegex := compileParamRegex(param)
+		fileData = paramRegex.ReplaceAll(fileData, []byte(val))
+	}
+	return fileData
+}
+
+func handleStep(pods GetPodsOutput, step *Step, summary *Summary, env []string) []string {
+	color.Blue("### Running step %s on nodes %d to %d", step.Name, step.OnNode, step.EndNode)
 	if len(step.Inputs) != 0 {
 		for _, input := range step.Inputs {
 			color.Blue("### Getting variable " + input)
