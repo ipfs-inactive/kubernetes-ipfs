@@ -111,7 +111,11 @@ type Selection struct {
 	Subset  *Subset  `yaml:"subset"`
 }
 
-// Range is
+/* Range is a selection method to choose a sequence of nodes.  The
+   range can be sequential, in which case the start and end node
+   index must be specified.  The range can also be random, in which
+   case the number of nodes must be specified
+*/
 type Range struct {
 	Order  string `yaml:"order"`  /* RANDOM or SEQUENTIAL */
 	Start  int    `yaml:"start"`  /* Valid for SEQUENTIAL */
@@ -119,14 +123,22 @@ type Range struct {
 	Number int    `yaml:"number"` /* Valid for RANDOM */
 }
 
-// Percent is
+/* Percent is a selection method used to choose a percentage of the
+   total nodes.  Order can either be random or sequential.  Sequential
+   percentages begin at a start node and choose the given number of 
+   nodes in order from the start inclusive.  Random percentages simply
+   choose a number of random nodes that make up the given percentage.
+   Percentages truncate down.  For example 50% of 5 nodes selects 2.
+*/
 type Percent struct {
 	Order   string `yaml:"order"`   /* RANDOM or SEQUENTIAL */
 	Start   int    `yaml:"start"`   /* Valid for SEQUENTIAL */
 	Percent int    `yaml:"percent"` /* Valid for RANDOM */
 }
 
-// Subset is
+/* Subset is a selection method that specifies an index or range of 
+   indices of the subset partition specified in the config.  The
+   partition must be specified to use subset. */
 type Subset struct {
 	Indices []int `yaml:"indices"`
 }
@@ -141,7 +153,17 @@ type Config struct {
 	SubsetPartition *SubsetPartition `yaml:"subset_partition"`
 }
 
-// SubsetParition is
+/* SubsetParition controls the partitioning of the nodes into 
+   distinct, non-overlapping subsets that can be specified by index
+   in steps of the test to select nodes for running commands.
+   SubsetPartition's PartitionType, or weighting specifies whether
+   the partition splits the nodes into even groups or groups of 
+   nodes proportional to different percentages.  SubsetPartitions Order
+   specifies whether nodes to fill the different subsets will be chosen
+   sequentially or at random.  Even partitions must specify the total
+   number of partitions, and weighted partitions must specify a list of
+   the different percentages of nodes in each partition.
+*/
 type SubsetPartition struct {
 	PartitionType    string `yaml:"partition_type"`    /* Either EVEN or WEIGHTED */
 	Order            string `yaml:"order"`             /* Either RANDOM or SEQUENTIAL */
@@ -190,15 +212,22 @@ func main() {
 	}
 	filePath := os.Args[1]
 	debug("## Loading " + filePath)
+	
+	var test Test
+	var summary Summary
+	var subsetPartition map[int][]int
 
+	readTestFile(filePath, &test)
+	validate(&test, &subsetPartition)
+	RunTests(&summary, &test, subsetPartition)
+	PrintResults(summary, test)
+}
+
+func readTestFile(filePath string, test *Test) {
 	fileData, err := ioutil.ReadFile(filePath)
 	if err != nil {
 		fatal(err)
 	}
-
-	var test Test
-	var summary Summary
-	var subsetPartition map[int][]int
 
 	err = yaml.Unmarshal([]byte(fileData), &test)
 	if err != nil {
@@ -207,26 +236,32 @@ func main() {
 
 	debug("Configuration:")
 	debugSpew(test)
+}
 
+func validate (test *Test, subsetPartition *map[int][]int) {
 	/* Include call to partition nodes into subsets if the partition field is included in the
 	   config.  subsetPartion is nil if it is not included in config.  Tests must include this
 	   in the config in order to use the subset selection method to choose nodes later on during
 	   testing  */
 	rand.Seed(time.Now().UTC().UnixNano())
-	subsetPartition, err = partition(test.Config)
+	var err error
+	*subsetPartition, err = partition(test.Config)
 	if err != nil {
 		color.Red("## Failed to parse subset partition: " + err.Error())
 		fatal(err)
 	}
-	err = validateSelections(test.Steps, subsetPartition, test.Config)
+
+	err = validateSelections(test.Steps, *subsetPartition, test.Config)
 	if err != nil {
 		color.Red("## Step selections did not validate")
 		fatal(err)
 	}
+}
 
+func RunTests (summary *Summary, test *Test, subsetPartition map[int][]int) {
 	summary.TestsToRun = test.Config.Times
 	summary.Start = time.Now()
-
+	var err error
 	for i := 0; i < test.Config.Times; i++ {
 		color.Cyan("## Running test '" + test.Name + "'")
 		if err != nil {
@@ -254,10 +289,13 @@ func main() {
 		env := make([]string, 0)
 		for _, step := range test.Steps {
 			nodeIndices := selectNodes(step, test.Config, subsetPartition)
-			env = handleStep(*pods, &step, &summary, env, nodeIndices)
+			env = handleStep(*pods, &step, summary, env, nodeIndices)
 		}
 		summary.TestsRan = summary.TestsRan + 1
 	}
+}
+
+func PrintResults (summary Summary, test Test) {
 	fmt.Println(time.Now().String())
 	fmt.Println("Now waiting for " + test.Config.GraceShutdown.String() + " seconds before shutdown...")
 	time.Sleep(test.Config.GraceShutdown * time.Second)
