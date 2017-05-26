@@ -217,28 +217,35 @@ func main() {
 	var summary Summary
 	var subsetPartition map[int][]int
 
-	readTestFile(filePath, &test)
-	validate(&test, &subsetPartition)
+	err := readTestFile(filePath, &test)
+	if err != nil {
+		fatal(err)
+	}
+	err = validate(&test, &subsetPartition)
+	if err != nil {
+		fatal(err)
+	}
 	RunTests(&summary, &test, subsetPartition)
 	PrintResults(summary, test)
 }
 
-func readTestFile(filePath string, test *Test) {
+func readTestFile(filePath string, test *Test) error {
 	fileData, err := ioutil.ReadFile(filePath)
 	if err != nil {
-		fatal(err)
+		return err
 	}
 
 	err = yaml.Unmarshal([]byte(fileData), &test)
 	if err != nil {
-		fatal(err)
+		return err
 	}
 
 	debug("Configuration:")
 	debugSpew(test)
+	return nil
 }
 
-func validate (test *Test, subsetPartition *map[int][]int) {
+func validate (test *Test, subsetPartition *map[int][]int) error {
 	/* Include call to partition nodes into subsets if the partition field is included in the
 	   config.  subsetPartion is nil if it is not included in config.  Tests must include this
 	   in the config in order to use the subset selection method to choose nodes later on during
@@ -248,14 +255,15 @@ func validate (test *Test, subsetPartition *map[int][]int) {
 	*subsetPartition, err = partition(test.Config)
 	if err != nil {
 		color.Red("## Failed to parse subset partition: " + err.Error())
-		fatal(err)
+		return err
 	}
 
 	err = validateSelections(test.Steps, *subsetPartition, test.Config)
 	if err != nil {
 		color.Red("## Step selections did not validate")
-		fatal(err)
+		return err
 	}
+	return nil
 }
 
 func RunTests (summary *Summary, test *Test, subsetPartition map[int][]int) {
@@ -352,11 +360,9 @@ func handleStep(pods GetPodsOutput, step *Step, summary *Summary, env []string, 
 			continue // skip handling the output or other assertions since it timed out.
 		}
 		if len(step.WriteToFile) != 0 {
-			f, err := os.OpenFile(step.WriteToFile, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0664)
-			if err != nil {
-				color.Red("Failed to open output file: %s", err)
-			} else {
-				f.WriteString(strings.Join(out, "\n"))
+			errWrite := ioutil.WriteFile(step.WriteToFile, []byte(strings.Join(out, "\n")), 0664)
+			if errWrite != nil {
+				color.Red("Failed to write output file: %s", err)
 			}
 		}
 		if len(step.Outputs) != 0 {
