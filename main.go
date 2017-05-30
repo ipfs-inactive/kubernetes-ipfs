@@ -10,6 +10,7 @@ import (
 	"math/rand"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -218,73 +219,48 @@ type GetPodsOutput struct {
 	Items []Pod `json:"items"`
 }
 
+type TestConfig struct {
+	Params Params `yaml:"params"`
+}
+
+func (config TestConfig) addParams(params Params) {
+	for k, v := range params {
+		config.Params[k] = v
+	}
+}
+
+func loadConfigFile(configPath string) (TestConfig, error) {
+	debug("Loading config file")
+
+	fileData, err := ioutil.ReadFile(configPath)
+	if err != nil {
+		return TestConfig{}, err
+	}
+
+	var testConfig TestConfig
+	err = yaml.Unmarshal([]byte(fileData), &testConfig)
+	if err != nil {
+		return TestConfig{}, err
+	}
+
+	return testConfig, nil
+}
+
 func fatal(i interface{}) {
 	fmt.Fprintln(os.Stderr, i)
 	os.Exit(1)
 }
 
-// Opts holds the result of parsed input args
-type Opts struct {
-	params Params
-}
-
-// all input options + corresponding data structures should be defined here
-func newOpts() *Opts {
-	opts := &Opts{
-		params: make(Params),
-	}
-
-	flag.Var(&opts.params, "param",
-		`Replace all test parameter instances of <name> with <value>.
-        Separate multiple `+"`<name>:<value>` inputs with ',' or pass this flag multiple times.")
-
-	return opts
-}
-
-/* parse all input args */
-func parseArgs() (*Opts, []string) {
-	// create opts
-	opts := newOpts()
-	// set usage
-	flag.Usage = usage
-	// parse all args
-	flag.Parse()
-
-	// get all non-flag args
-	rest := append([]string{os.Args[0]}, flag.Args()...)
-
-	return opts, rest
-}
-
-// Params holds the parameter mappings specified  by user
-type Params map[PName]PValue
-type PName string
-type PValue string
-
-// specific Params -> String transformation
-func (params *Params) String() string {
-	return fmt.Sprint(*params)
-}
-
-// tell `flag` package how to parse/store param args
-func (params *Params) Set(value string) error {
-	for _, p := range strings.Split(value, ",") {
-		pElems := strings.SplitN(p, ":", 2)
-		if len(pElems) != 2 {
-			return fmt.Errorf("Bad parameter declaration: %s %d", p)
-		}
-		pName := PName(pElems[0])
-		pValue := PValue(pElems[1])
-		(*params)[pName] = pValue
-	}
-	return nil
-}
-
 func usage() {
 	fmt.Fprintf(os.Stderr, "USAGE\n")
-	fmt.Fprintf(os.Stderr, "  kubernetes-ipfs [--param=<name>:<value>,...] <testfile>\n\n")
+	fmt.Fprintf(os.Stderr, "  kubernetes-ipfs"+
+		" [--param <name>:<value>,...]"+
+		" [--config <config_file>]"+
+		" <testfile>\n\n")
 	fmt.Fprintf(os.Stderr, "OPTIONS\n")
+	// print each flag's description
 	flag.PrintDefaults()
+	// tack on `--help` flag at the end, previous command doesn't print it
 	fmt.Fprintf(os.Stderr,
 		`  -help
         Show this help message and exit`)
@@ -292,16 +268,52 @@ func usage() {
 }
 
 func main() {
-	// opts = parsed option results, args = all other non-flag input args
-	opts, args := parseArgs()
+	// set usage
+	flag.Usage = usage
 
+	cliParams := make(Params)
+	flag.Var(&cliParams, "param",
+		`Replace all test parameter instances of <name> with <value>.
+        Separate multiple `+"`<name>=<value>` inputs with ',' or pass this flag multiple times.")
+
+	var paramFile string
+	paramFileDummy := "<testfile_dir>/config.yml"
+	flag.StringVar(&paramFile, "config", paramFileDummy,
+		"Load test parameters from `<config_file>`")
+
+	// parse all args
+	flag.Parse()
+
+	args := append([]string{os.Args[0]}, flag.Args()...)
 	if len(args) != 2 {
 		// no test file in input, print usage and exit
 		usage()
 		os.Exit(1)
 	}
 
+	// test file should be only arg after parsing flags
 	filePath := args[1]
+
+	var testConfig TestConfig
+	var err error
+	if paramFile == paramFileDummy {
+		// default params file to test directory (if not specified)
+		testConfig, err = loadConfigFile(filepath.Dir(filePath) + "/config.yml")
+		// if default config not found, print Warning and continue
+		if err != nil {
+			fmt.Printf("Warning: %s\n", err)
+		}
+	} else {
+		testConfig, err = loadConfigFile(paramFile)
+		// if input config file not found, report error/quit
+		if err != nil {
+			fatal(err)
+		}
+	}
+
+	// combine params in config with CLI input (CLI input has priority)
+	testConfig.addParams(cliParams)
+
 	debug("## Loading " + filePath)
 
 	test, err := readTestFile(filePath)
@@ -309,12 +321,15 @@ func main() {
 		fatal(err)
 	}
 
-	fileData = replaceAllParams(fileData, opts.params)
+	testData, err := replaceParams(fileData, testConfig.Params)
+	if err != nil {
+		fatal(err)
+	}
 
 	var test Test
 	var summary Summary
 
-	err = yaml.Unmarshal([]byte(fileData), &test)
+	err = yaml.Unmarshal([]byte(testData), &test)
 	if err != nil {
 		fatal(err)
 	}
@@ -405,45 +420,6 @@ func PrintResults(summary Summary, test Test) {
 	summary.End = time.Now()
 	printSummary(summary)
 	os.Exit(evaluateOutcome(summary, test.Config.Expected)) // Returns success on all tests to OS; this allows for test scripting.
-}
-
-/* resolve all parameters in test file */
-func replaceAllParams(fileData []byte, params Params) []byte {
-	// replace all given parameters with their specified values
-	fileData = replaceInputParams(fileData, params)
-	// replace all other parameters with their default values
-	fileData = replaceDefaultParams(fileData)
-
-	return fileData
-}
-
-/* resolve all param names (keys in `params` map) to their resp. values */
-func replaceInputParams(fileData []byte, params Params) []byte {
-	for param, val := range params {
-		paramRegex := compileParamRegex(param)
-		fileData = paramRegex.ReplaceAll(fileData, []byte(val))
-	}
-	return fileData
-}
-
-func replaceDefaultParams(fileData []byte) []byte {
-	// matches strings of the form `%{parameter, value}`, captures `value`
-	defaultRegex := regexp.MustCompile("%\\{\\s*(.*?)\\s*,\\s*(.*?)\\s*\\}")
-	defaultParams := defaultRegex.FindAllSubmatch(fileData, -1)
-
-	/* replace all occurrences of `%{parameter, value}` with `value` */
-	for _, defaultParam := range defaultParams {
-		param, val := PName(defaultParam[1]), defaultParam[2]
-		paramRegex := compileParamRegex(param)
-		fileData = paramRegex.ReplaceAll(fileData, []byte(val))
-	}
-	return fileData
-}
-
-func compileParamRegex(param PName) *regexp.Regexp {
-	// matches strings of the form `%{parameter}` and `%{parameter, value}`
-	paramRegex, _ := regexp.Compile("%\\{\\s*" + string(param) + "\\s*(?:,\\s*.*?\\s*)?\\}")
-	return paramRegex
 }
 
 func handleStep(pods GetPodsOutput, step *Step, summary *Summary, env []string) []string {
