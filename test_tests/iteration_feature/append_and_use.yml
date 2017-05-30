@@ -1,0 +1,39 @@
+name: Test that array constructed with append_to can be accessed
+config:
+  nodes: 5
+  selector: run=go-ipfs-stress
+  times: 1
+  expected:
+    successes: 0
+    failures: 0
+    timeouts: 0
+steps:
+  - name: add to ipfs and store in array
+    cmd: "head -c 10 /dev/urandom | base64 | ipfs add -q && sleep 1"
+    selection:
+      percent:
+        start: 1
+        order: SEQUENTIAL
+        percent: 100
+    outputs:
+    - line: 0
+      append_to: HASH
+  - name: iterate through each array with node index
+    cmd: "echo ${HASH[%s]} > hash_step_iterate.txt"
+    selection:
+      percent:
+        order: SEQUENTIAL
+        start: 1
+        percent: 100
+
+  - name: iterate through array with bound of 5
+    cmd: "echo ${HASH[%i]} >> hash_iter.txt"
+    for:
+      iter_structure: BOUND
+      number: 5
+    on_node: 1
+  - name: iterate through array with for-each loop
+    cmd: "echo ${HASH[%i]} >> hash_foreach.txt"
+    for:
+      iter_structure: HASH
+    on_node: 2

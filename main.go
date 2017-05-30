@@ -10,9 +10,9 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
-	"strconv"
 	"strings"
 	"time"
+	"strconv"
 
 	"github.com/davecgh/go-spew/spew"
 	"github.com/fatih/color"
@@ -45,8 +45,9 @@ type Summary struct {
 
 // Output is
 type Output struct {
-	Line   int    `yaml:"line"`
-	SaveTo string `yaml:"save_to"`
+	Line     int    `yaml:"line"`
+	SaveTo   string `yaml:"save_to"`
+	AppendTo string `yaml:"append_to"`
 }
 
 // Assertion is
@@ -55,15 +56,24 @@ type Assertion struct {
 	ShouldBeEqualTo string `yaml:"should_be_equal_to"`
 }
 
+// For is the iteration structure
+// determining how many iterations of a step are run
+type For struct {
+	/* BOUND to iterate from 1 to number, internal array variable name to iterate over array */
+	IterStructure string `yaml:"iter_structure"` 
+	Number        int    `yaml:"number"`        // Valid for BOUND
+}
+
 // Step is
 type Step struct {
 	Name string `yaml:"name"`
 
 	/* Old style selection remains supported */
-	OnNode  int `yaml:"on_node"`
-	EndNode int `yaml:"end_node"`
+	OnNode      int         `yaml:"on_node"`
+	EndNode     int         `yaml:"end_node"`
 	/* New style selection */
-	Selection *Selection `yaml:"selection"`
+	Selection   *Selection  `yaml:"selection"`
+	For         *For 			  `yaml:"for"`
 
 	CMD         string      `yaml:"cmd"`
 	Timeout     int         `yaml:"timeout"`
@@ -295,9 +305,11 @@ func RunTests (summary *Summary, test *Test, subsetPartition map[int][]int) {
 		pods, err := getPods(&test.Config) // Get the pod list after a scale-up
 		color.Cyan("## Using " + strconv.Itoa(test.Config.Nodes) + " nodes for this test")
 		env := make([]string, 0)
+		envArrays := make(map[string][]string)
 		for _, step := range test.Steps {
 			nodeIndices := selectNodes(step, test.Config, subsetPartition)
-			env = handleStep(*pods, &step, summary, env, nodeIndices)
+			fmt.Printf("The node indices %v\n", nodeIndices)
+			env, envArrays = handleStep(*pods, &step, summary, env, envArrays, nodeIndices)
 		}
 		summary.TestsRan = summary.TestsRan + 1
 	}
@@ -332,7 +344,7 @@ func getSubsetBounds(subset int, numSubsets int, numNodes int) (int, int) {
 	return startNode, endNode
 }
 
-func handleStep(pods GetPodsOutput, step *Step, summary *Summary, env []string, nodeIndices []int) []string {
+func handleStep(pods GetPodsOutput, step *Step, summary *Summary, env []string, envArrays map[string][]string, nodeIndices []int) ([]string, map[string][]string) {
 	color.Blue("### Running step %s on nodes %v", step.Name, nodeIndices)
 	if len(step.Inputs) != 0 {
 		for _, input := range step.Inputs {
@@ -341,82 +353,130 @@ func handleStep(pods GetPodsOutput, step *Step, summary *Summary, env []string, 
 	}
 	color.Magenta("$ %s", step.CMD)
 	numNodes := len(nodeIndices)
-	color.Magenta("Running parallel on %d nodes.", numNodes)
 
-	// Initialize a channel with depth of number of nodes we're testing on simultaneously
-	outputStrings := make(chan []string, numNodes)
-	outputErr := make(chan bool, numNodes)
-	for _, idx := range nodeIndices {
-		// Hand this channel to the pod runner and let it fill the queue
-		runInPodAsync(pods.Items[idx-1].Metadata.Name, step.CMD, env, step.Timeout, outputStrings, outputErr)
+	/* Determine number of iterations */
+	var numIters int
+	if step.For == nil {
+		numIters = 1
+	} else if step.For.IterStructure == "BOUND" {
+		numIters = step.For.Number
+	} else { /* Iterating over an array */
+		numIters = len(envArrays[step.For.IterStructure])
 	}
-	// Iterate through the queue to pull out results one-by-one
-	// These may be out of order, but is there a better way to do this? Do we need them in order?
-	for j := 0; j < numNodes; j++ {
-		out := <-outputStrings
-		err := <-outputErr
-		if err {
-			summary.Timeouts++
-			continue // skip handling the output or other assertions since it timed out.
+
+	/* Find all array variables used and add to environment */
+
+  r, _ := regexp.Compile("([a-zA-Z_][a-zA-Z0-9_]*)\\[(%s|%i)\\]")
+	regexRaw := r.FindAllStringSubmatch(step.CMD, -1)
+	arrayVars := make([]string, 0)
+	for _, raw := range regexRaw {
+		arrayVars = append(arrayVars, raw[1])
+	}
+
+	for _, arrayName := range arrayVars { 
+	  // Go from envArray table at given index to a string defining a bash array 
+		bashString := arrayName + "=("
+		for _, s := range envArrays[arrayName] {
+			bashString += "'" + s + "' "
 		}
-		if len(step.WriteToFile) != 0 {
-			errWrite := ioutil.WriteFile(step.WriteToFile, []byte(strings.Join(out, "\n")), 0664)
-			if errWrite != nil {
-				color.Red("Failed to write output file: %s", err)
+		bashString += ")"
+		env = append(env, bashString)
+	}
+
+	color.Magenta("Running parallel on %d nodes for %d iterations.", numNodes, numIters)
+	for i := 0; i < numIters; i++ {
+
+		// Initialize a channel with depth of number of nodes we're testing on simultaneously
+		outputStrings := make(chan []string, numNodes)
+		outputErr := make(chan bool, numNodes)
+		for _, idx := range nodeIndices {
+			// Command search and replace for index references into array (%i/%s) and 
+			r1, _ := regexp.Compile("\\[%s\\]")
+			r2, _ := regexp.Compile("\\[%i\\]")
+
+			command := r1.ReplaceAllString(step.CMD, "[" + strconv.Itoa(idx-1) + "]")
+			command = r2.ReplaceAllString(command, "[" + strconv.Itoa(i) + "]")
+
+			// Hand this channel to the pod runner and let it fill the queue
+			runInPodAsync(pods.Items[idx-1].Metadata.Name, command, env, step.Timeout, outputStrings, outputErr)
+		}
+		// Iterate through the queue to pull out results one-by-one
+		// These may be out of order, but is there a better way to do this? Do we need them in order?
+		for j := 0; j < numNodes; j++ {
+			out := <-outputStrings
+			err := <-outputErr
+			if err {
+				summary.Timeouts++
+				continue // skip handling the output or other assertions since it timed out.
 			}
-		}
-		if len(step.Outputs) != 0 {
-			for index, output := range step.Outputs {
-				if index >= len(out) {
-					color.Red("Not enough lines in output. Skipping")
-					break
+			if len(step.WriteToFile) != 0 {
+				errWrite := ioutil.WriteFile(step.WriteToFile, []byte(strings.Join(out, "\n")), 0664)
+				if errWrite != nil {
+					color.Red("Failed to write output file: %s", err)
 				}
-				line := out[index]
-				color.Magenta("### Saving output from line %d to variable %s: %s", output.Line, output.SaveTo, line)
-				env = append(env, output.SaveTo+"=\""+line+"\"")
 			}
-		}
-		if len(step.Assertions) != 0 {
-			for _, assertion := range step.Assertions {
-				if assertion.Line >= len(out) {
-					color.Red("Not enough lines in output.Skipping assertions")
-					break
-				}
-				lineToAssert := out[assertion.Line]
-				value := ""
-				// Find an env that matches the ShouldBeEqualTo variable
-				// i.e. RESULT="abc abc" matches ShouldBeEqualTo: RESULT
-				// value becomes then abc abc (without quotes)
-				for _, e := range env {
-					rex := regexp.MustCompile(
-						fmt.Sprintf("^%s=\"(.*)\"$",
-							assertion.ShouldBeEqualTo))
-					found := rex.FindStringSubmatch(e)
-					if len(found) == 2 && found[1] != "" {
-						value = found[1]
+			if len(step.Outputs) != 0 {
+				for index, output := range step.Outputs {
+					if index >= len(out) {
+						color.Red("Not enough lines in output. Skipping")
 						break
 					}
+					line := out[index]
+					if output.SaveTo != "" {
+						color.Magenta("### Saving output from line %d to variable %s: %s", output.Line, output.SaveTo, line)
+						env = append(env, output.SaveTo+"=\""+line+"\"")
+					} else if output.AppendTo != "" {
+						color.Magenta("### Appending output from line %d to array variable %s: %s", output.Line, output.AppendTo, line)
+						array, ok := envArrays[output.AppendTo]
+						if !ok {
+							envArrays[output.AppendTo] = make([]string, 0)
+						}
+						envArrays[output.AppendTo] = append(array, line)
+					}
 				}
-				// If nothing was found in the environment,
-				// assume its a literal
-				if value == "" {
-					value = assertion.ShouldBeEqualTo
-				}
-				if lineToAssert != value {
-					color.Set(color.FgRed)
-					fmt.Println("Assertion failed!")
-					fmt.Printf("Actual value=%s\n", lineToAssert)
-					fmt.Printf("Expected value=%s\n\n", value)
-					color.Unset()
-					summary.Failures = summary.Failures + 1
-				} else {
-					summary.Successes = summary.Successes + 1
-					color.Green("Assertion Passed")
+			}
+			if len(step.Assertions) != 0 {
+				for _, assertion := range step.Assertions {
+					if assertion.Line >= len(out) {
+						color.Red("Not enough lines in output.Skipping assertions")
+						break
+					}
+					lineToAssert := out[assertion.Line]
+					value := ""
+					// Find an env that matches the ShouldBeEqualTo variable
+					// i.e. RESULT="abc abc" matches ShouldBeEqualTo: RESULT
+					// value becomes then abc abc (without quotes)
+					for _, e := range env {
+						rex := regexp.MustCompile(
+							fmt.Sprintf("^%s=\"(.*)\"$",
+								assertion.ShouldBeEqualTo))
+						found := rex.FindStringSubmatch(e)
+						if len(found) == 2 && found[1] != "" {
+							value = found[1]
+							break
+						}
+					}
+					// If nothing was found in the environment,
+					// assume its a literal
+					if value == "" {
+						value = assertion.ShouldBeEqualTo
+					}
+					if lineToAssert != value {
+						color.Set(color.FgRed)
+						fmt.Println("Assertion failed!")
+						fmt.Printf("Actual value=%s\n", lineToAssert)
+						fmt.Printf("Expected value=%s\n\n", value)
+						color.Unset()
+						summary.Failures = summary.Failures + 1
+					} else {
+						summary.Successes = summary.Successes + 1
+						color.Green("Assertion Passed")
+					}
 				}
 			}
 		}
 	}
-	return env
+	return env, envArrays
 }
 
 func getPods(cfg *Config) (*GetPodsOutput, error) {
@@ -676,7 +736,7 @@ func validateSelections(steps []Step, subsetPartition map[int][]int, config Conf
 			numNodes := int((float64(percent) / 100.0) * float64(config.Nodes))
 			switch step.Selection.Percent.Order {
 			case sequential:
-				if step.Selection.Percent.Start-1+numNodes > config.Nodes {
+				if step.Selection.Percent.Start-1+numNodes > config.Nodes || step.Selection.Percent.Start < 1{
 					return validateError(idx, "Invalid start position")
 				}
 			case random: /* No checks needed */
