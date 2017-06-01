@@ -14,19 +14,22 @@ var expected map[string]map[int][]int
 
 func visitBad(path string, f os.FileInfo, err error) error {
   var test Test
-  var subsetPartition map[int][]int
   if err != nil {
     return err
   }
   if f.IsDir() {
     return nil /* skip dir, not a test file */
   }
-  err = readTestFile(path, &test)
+  err, test = readTestFile(path)
   if err != nil {
     return err
   }
   /* This should always error */
-  err = validate(&test, &subsetPartition)
+  err1, subsetPartition := partition(test.Config)
+  if err1 != nil {
+    return nil /* Some tests have bad subset partitions specified in configs */
+  }
+  err = validate(test, subsetPartition)
   if err == nil {
     return errors.New(fmt.Sprintf("Bad input file %s incorrectly validates", path))
   }
@@ -50,12 +53,16 @@ func visit(path string, f os.FileInfo, err error) error {
   if f.IsDir() {
     return nil /* skip dir, not a test file */
   }
-  err = readTestFile(path, &test)
+  err, test = readTestFile(path)
   if err != nil {
     return err
   }
   /* This should validate correctly */
-  err = validate(&test, &subsetPartition)
+  err1, subsetPartition := partition(test.Config)
+  if err1 != nil {
+    return err
+  }
+  err = validate(test, subsetPartition)
   if err != nil {
     return err
   }
