@@ -1,0 +1,14 @@
+name: Test old Onstep Endstep
+config:
+  nodes: 5
+  selector: run=go-ipfs-stress
+  times: 1
+  expected:
+      successes: 0
+      failures: 0
+      timeouts: 0
+steps:
+  - name: Run on old step nodes 2 3 4
+    cmd: echo "old range" > OLD_RANGE
+    on_node: 2
+    end_node: 4
