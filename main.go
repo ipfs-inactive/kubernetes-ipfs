@@ -213,52 +213,48 @@ func main() {
 	filePath := os.Args[1]
 	debug("## Loading " + filePath)
 	
-	var test Test
-	var summary Summary
 	var subsetPartition map[int][]int
+	err, test := readTestFile(filePath)
+	if err != nil {
+		fatal(err)
+	}
 
-	err := readTestFile(filePath, &test)
-	if err != nil {
+	rand.Seed(time.Now().UTC().UnixNano())
+	err2, subsetPartition := partition(test.Config)
+	if err2 != nil {
+		fatal(err2)
+	}
+
+	if err := validate(test, subsetPartition); err != nil {
 		fatal(err)
 	}
-	err = validate(&test, &subsetPartition)
-	if err != nil {
-		fatal(err)
-	}
-	RunTests(&summary, &test, subsetPartition)
+	summary := RunTests(test, subsetPartition)
 	PrintResults(summary, test)
 }
 
-func readTestFile(filePath string, test *Test) error {
+func readTestFile(filePath string) (error, Test) {
+	var test Test
 	fileData, err := ioutil.ReadFile(filePath)
 	if err != nil {
-		return err
+		return err, test
 	}
 
-	err = yaml.Unmarshal([]byte(fileData), &test)
-	if err != nil {
-		return err
+	if err := yaml.Unmarshal([]byte(fileData), &test); err != nil {
+		return err, test
 	}
 
 	debug("Configuration:")
 	debugSpew(test)
-	return nil
+	return nil, test
 }
 
-func validate (test *Test, subsetPartition *map[int][]int) error {
+func validate (test Test, subsetPartition map[int][]int) error {
 	/* Include call to partition nodes into subsets if the partition field is included in the
 	   config.  subsetPartion is nil if it is not included in config.  Tests must include this
 	   in the config in order to use the subset selection method to choose nodes later on during
 	   testing  */
-	rand.Seed(time.Now().UTC().UnixNano())
-	var err error
-	*subsetPartition, err = partition(test.Config)
-	if err != nil {
-		color.Red("## Failed to parse subset partition: " + err.Error())
-		return err
-	}
-
-	err = validateSelections(test.Steps, *subsetPartition, test.Config)
+	
+	err := validateSelections(test.Steps, subsetPartition, test.Config)
 	if err != nil {
 		color.Red("## Step selections did not validate")
 		return err
@@ -266,7 +262,7 @@ func validate (test *Test, subsetPartition *map[int][]int) error {
 	return nil
 }
 
-func RunTests (summary *Summary, test *Test, subsetPartition map[int][]int) {
+func RunTests (test Test, subsetPartition map[int][]int) (summary Summary) {
 	summary.TestsToRun = test.Config.Times
 	summary.Start = time.Now()
 	var err error
@@ -297,10 +293,11 @@ func RunTests (summary *Summary, test *Test, subsetPartition map[int][]int) {
 		env := make([]string, 0)
 		for _, step := range test.Steps {
 			nodeIndices := selectNodes(step, test.Config, subsetPartition)
-			env = handleStep(*pods, &step, summary, env, nodeIndices)
+			env = handleStep(*pods, &step, &summary, env, nodeIndices)
 		}
 		summary.TestsRan = summary.TestsRan + 1
 	}
+	return summary
 }
 
 func PrintResults (summary Summary, test Test) {
@@ -693,7 +690,7 @@ func validateSelections(steps []Step, subsetPartition map[int][]int, config Conf
 	return nil
 }
 
-func partition(config Config) (map[int][]int, error) {
+func partition(config Config) (error, map[int][]int) {
 	if config.SubsetPartition == nil {
 		return nil, nil
 	}
@@ -722,9 +719,10 @@ func partition(config Config) (map[int][]int, error) {
 		err = errors.New("Partition has invalid ordering")
 	}
 	if err != nil {
-		partitionMap = nil
+		color.Red("## Failed to parse subset partition: " + err.Error())
+		return err, partitionMap
 	}
-	return partitionMap, err
+	return nil, partitionMap
 }
 
 func seqEvenPartition(partitionMap map[int][]int, numSubsets int, numNodes int) error {
