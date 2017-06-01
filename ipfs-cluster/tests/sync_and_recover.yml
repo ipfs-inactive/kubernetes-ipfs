@@ -10,19 +10,20 @@ config:
 steps:
   - name: add random stuff to ipfs
     on_node: 1
-    cmd: head -c 100 /dev/urandom | base64 | ipfs add -q
+    cmd: "head -c 100 /dev/urandom | base64 | ipfs add -q"
     outputs:
     - line: 0
       save_to: HASH
   - name: add to ipfs cluster
     on_node: 1
-    cmd: ipfs-cluster-ctl pin add $HASH && sleep 2
+    cmd: "ipfs-cluster-ctl pin add $HASH && sleep 2"
   - name: unpin under the hood
     on_node: 1
-    cmd: ipfs pin rm $HASH
+    cmd: "ipfs pin rm $HASH"
   - name: running sync identifies the problem
     on_node: 1
-    cmd: ipfs-cluster-ctl --enc json sync $HASH | jq -r '.peer_map | .[].status' | sort | uniq -c | sed 's/^ *//'
+    cmd: "ipfs-cluster-ctl --enc json sync $HASH
+        | jq -r '.peer_map | .[].status' | sort | uniq -c | sed 's/^ *//'"
     assertions:
       - line: 0
         should_be_equal_to: "1 pin_error"
@@ -30,13 +31,14 @@ steps:
         should_be_equal_to: "5 pinned"
   - name: running recover fixes the problem
     on_node: 1
-    cmd: ipfs-cluster-ctl --enc json recover $HASH | jq -r '.cid' && sleep 2
+    cmd: "ipfs-cluster-ctl --enc json recover $HASH | jq -r '.cid' && sleep 2"
     assertions:
       - line: 0
         should_be_equal_to: HASH
   - name: check that the problem has been fixed
     on_node: 1
-    cmd: ipfs-cluster-ctl --enc json status $HASH | jq -r '.peer_map | .[].status' | sort | uniq -c | sed 's/^ *//'
+    cmd: "ipfs-cluster-ctl --enc json status $HASH
+        | jq -r '.peer_map | .[].status' | sort | uniq -c | sed 's/^ *//'"
     assertions:
       - line: 0
         should_be_equal_to: "6 pinned"

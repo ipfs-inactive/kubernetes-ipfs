@@ -1,0 +1,20 @@
+name: Test append_to output
+config:
+  nodes: 5
+  selector: run=go-ipfs-stress
+  times: 1
+  expected:
+    successes: 0
+    failures: 0
+    timeouts: 0
+steps:
+  - name: add something to ipfs and add to HASH array
+    cmd: "head -c 10 /dev/urandom | base64 | ipfs add -q"
+    selection:
+      range:
+        order: SEQUENTIAL
+        start: 1
+        end: 5
+    outputs:
+    - line: 0
+      append_to: HASH

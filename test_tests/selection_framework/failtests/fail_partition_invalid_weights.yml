@@ -1,0 +1,17 @@
+name: Fail parsing partition with invalid partition weights
+config:
+  nodes: 5
+  selector: run=go-ipfs-stress
+  times: 1
+  expected:
+      successes: 0
+      failures: 0
+      timeouts: 0
+  subset_partition:
+    partition_type: WEIGHTED
+    order: SEQUENTIAL
+    percents: [10, 10] # Doesn't add up to 100 %
+steps:
+  - name: should never execute
+    cmd: echo "Should not execute" > should_not_exist.txt
+    on_node: 1

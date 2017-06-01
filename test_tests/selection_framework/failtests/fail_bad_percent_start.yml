@@ -1,0 +1,17 @@
+name: Fail selection validate with percent start too great
+config:
+  nodes: 5
+  selector: run=go-ipfs-stress
+  times: 1
+  expected:
+      successes: 0
+      failures: 0
+      timeouts: 0
+steps:
+  - name: Bad percentage start
+    cmd: echo "Should not execute" > should_not_exist.txt
+    selection:
+      percent:
+        order: SEQUENTIAL
+        start: 4
+        percent: 80
