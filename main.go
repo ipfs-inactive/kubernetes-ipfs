@@ -10,9 +10,9 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
-	"strconv"
 
 	"github.com/davecgh/go-spew/spew"
 	"github.com/fatih/color"
@@ -60,8 +60,8 @@ type Assertion struct {
 // determining how many iterations of a step are run
 type For struct {
 	/* BOUND to iterate from 1 to number, internal array variable name to iterate over array */
-	IterStructure string `yaml:"iter_structure"` 
-	Number        int    `yaml:"number"`        // Valid for BOUND
+	IterStructure string `yaml:"iter_structure"`
+	Number        int    `yaml:"number"` // Valid for BOUND
 }
 
 // Step is
@@ -69,11 +69,11 @@ type Step struct {
 	Name string `yaml:"name"`
 
 	/* Old style selection remains supported */
-	OnNode      int         `yaml:"on_node"`
-	EndNode     int         `yaml:"end_node"`
+	OnNode  int `yaml:"on_node"`
+	EndNode int `yaml:"end_node"`
 	/* New style selection */
-	Selection   *Selection  `yaml:"selection"`
-	For         *For 			  `yaml:"for"`
+	Selection *Selection `yaml:"selection"`
+	For       *For       `yaml:"for"`
 
 	CMD         string      `yaml:"cmd"`
 	Timeout     int         `yaml:"timeout"`
@@ -109,10 +109,10 @@ each step takes a selection object which allows
 
 	    In addition both percentage and range selections can specify
 	 subsets of nodes over which the percents and ranges are calculated
-	 The subset partitions are declared earlier in the config using a 
+	 The subset partitions are declared earlier in the config using a
 	 SubsetPartition.  A partition must be specified to use the subset
-	 field within a selection.  Example 1 will run on 1 random node of 
-	 subset 1 and subset 5, example 2 will run on 50% of the nodes in 
+	 field within a selection.  Example 1 will run on 1 random node of
+	 subset 1 and subset 5, example 2 will run on 50% of the nodes in
 	 subset 3.
 	    **Example 1**
 	    selection:
@@ -132,7 +132,7 @@ each step takes a selection object which allows
 type Selection struct {
 	Range   *Range   `yaml:"range"`
 	Percent *Percent `yaml:"percent"`
-	Subsets  []int  `yaml:"subset"`
+	Subsets []int    `yaml:"subset"`
 }
 
 /* Range is a selection method to choose a sequence of nodes.  The
@@ -149,7 +149,7 @@ type Range struct {
 
 /* Percent is a selection method used to choose a percentage of the
    total nodes.  Order can either be random or sequential.  Sequential
-   percentages begin at a start node and choose the given number of 
+   percentages begin at a start node and choose the given number of
    nodes in order from the start inclusive.  Random percentages simply
    choose a number of random nodes that make up the given percentage.
    Percentages truncate down.  For example 50% of 5 nodes selects 2.
@@ -159,8 +159,6 @@ type Percent struct {
 	Start   int    `yaml:"start"`   /* Valid for SEQUENTIAL */
 	Percent int    `yaml:"percent"` /* Valid for RANDOM */
 }
-
-
 
 // Config is
 type Config struct {
@@ -172,11 +170,11 @@ type Config struct {
 	SubsetPartition *SubsetPartition `yaml:"subset_partition"`
 }
 
-/* SubsetParition controls the partitioning of the nodes into 
+/* SubsetParition controls the partitioning of the nodes into
    distinct, non-overlapping subsets that can be specified by index
    in steps of the test to select nodes for running commands.
    SubsetPartition's PartitionType, or weighting specifies whether
-   the partition splits the nodes into even groups or groups of 
+   the partition splits the nodes into even groups or groups of
    nodes proportional to different percentages.  SubsetPartitions Order
    specifies whether nodes to fill the different subsets will be chosen
    sequentially or at random.  Even partitions must specify the total
@@ -231,7 +229,7 @@ func main() {
 	}
 	filePath := os.Args[1]
 	debug("## Loading " + filePath)
-	
+
 	var test Test
 	var summary Summary
 	var subsetPartition map[int][]int
@@ -264,7 +262,7 @@ func readTestFile(filePath string, test *Test) error {
 	return nil
 }
 
-func validate (test *Test, subsetPartition *map[int][]int) error {
+func validate(test *Test, subsetPartition *map[int][]int) error {
 	/* Include call to partition nodes into subsets if the partition field is included in the
 	   config.  subsetPartion is nil if it is not included in config.  Tests must include this
 	   in the config in order to use the subset selection method to choose nodes later on during
@@ -285,7 +283,7 @@ func validate (test *Test, subsetPartition *map[int][]int) error {
 	return nil
 }
 
-func RunTests (summary *Summary, test *Test, subsetPartition map[int][]int) {
+func RunTests(summary *Summary, test *Test, subsetPartition map[int][]int) {
 	summary.TestsToRun = test.Config.Times
 	summary.Start = time.Now()
 	var err error
@@ -323,7 +321,7 @@ func RunTests (summary *Summary, test *Test, subsetPartition map[int][]int) {
 	}
 }
 
-func PrintResults (summary Summary, test Test) {
+func PrintResults(summary Summary, test Test) {
 	fmt.Println(time.Now().String())
 	fmt.Println("Now waiting for " + test.Config.GraceShutdown.String() + " seconds before shutdown...")
 	time.Sleep(test.Config.GraceShutdown * time.Second)
@@ -374,15 +372,15 @@ func handleStep(pods GetPodsOutput, step *Step, summary *Summary, env []string, 
 
 	/* Find all array variables used and add to environment */
 
-  r, _ := regexp.Compile("([a-zA-Z_][a-zA-Z0-9_]*)\\[(%s|%i)\\]")
+	r, _ := regexp.Compile("([a-zA-Z_][a-zA-Z0-9_]*)\\[(%s|%i)\\]")
 	regexRaw := r.FindAllStringSubmatch(step.CMD, -1)
 	arrayVars := make([]string, 0)
 	for _, raw := range regexRaw {
 		arrayVars = append(arrayVars, raw[1])
 	}
 
-	for _, arrayName := range arrayVars { 
-	  // Go from envArray table at given index to a string defining a bash array 
+	for _, arrayName := range arrayVars {
+		// Go from envArray table at given index to a string defining a bash array
 		bashString := arrayName + "=("
 		for _, s := range envArrays[arrayName] {
 			bashString += "'" + s + "' "
@@ -392,7 +390,7 @@ func handleStep(pods GetPodsOutput, step *Step, summary *Summary, env []string, 
 	}
 
 	color.Magenta("Running parallel on %d nodes for %d iterations.", numNodes, numIters)
-	// Command search and replace for index references into array (%i/%s) and 
+	// Command search and replace for index references into array (%i/%s) and
 	r1, _ := regexp.Compile("\\[%s\\]")
 	r2, _ := regexp.Compile("\\[%i\\]")
 	for i := 0; i < numIters; i++ {
@@ -401,8 +399,8 @@ func handleStep(pods GetPodsOutput, step *Step, summary *Summary, env []string, 
 		outputStrings := make(chan []string, numNodes)
 		outputErr := make(chan bool, numNodes)
 		for _, idx := range nodeIndices {
-			command := r1.ReplaceAllString(step.CMD, "[" + strconv.Itoa(idx-1) + "]")
-			command = r2.ReplaceAllString(command, "[" + strconv.Itoa(i) + "]")
+			command := r1.ReplaceAllString(step.CMD, "["+strconv.Itoa(idx-1)+"]")
+			command = r2.ReplaceAllString(command, "["+strconv.Itoa(i)+"]")
 			// Hand this channel to the pod runner and let it fill the queue
 			runInPodAsync(pods.Items[idx-1].Metadata.Name, command, env, step.Timeout, outputStrings, outputErr)
 		}
@@ -643,11 +641,11 @@ func selectNodes(step Step, config Config, subsetPartition map[int][]int) []int 
 }
 
 func selectNodesFromSelection(step Step, config Config, subsetPartition map[int][]int) []int {
-	var nodes []int 
+	var nodes []int
 	switch {
 	case step.Selection.Range != nil && step.Selection.Subsets == nil:
 		nodes = selectNodesRange(step, config, makeRange(1, config.Nodes))
-	case step.Selection.Range !=nil && step.Selection.Subsets != nil:
+	case step.Selection.Range != nil && step.Selection.Subsets != nil:
 		nodes = selectNodesRange(step, config, subsetPartition[step.Selection.Subsets[0]])
 		for _, subset := range step.Selection.Subsets[1:] {
 			nodes = append(nodes, selectNodesRange(step, config, subsetPartition[subset])...)
@@ -691,7 +689,7 @@ func selectNodesPercent(step Step, config Config, nodes []int) []int {
 	numNodes := int((float64(percent) / 100.0) * float64(len(nodes)))
 	switch step.Selection.Percent.Order {
 	case sequential:
-		start := step.Selection.Percent.Start - 1 
+		start := step.Selection.Percent.Start - 1
 		end := step.Selection.Percent.Start - 2 + numNodes
 		selection = getRange(nodes, start, end)
 	case random:
@@ -726,7 +724,7 @@ func validateSelections(steps []Step, subsetPartition map[int][]int, config Conf
 		case step.Selection.Subsets != nil:
 			if subsetPartition == nil {
 				return validateError(idx, "Subset specified without specifying partion in header")
-			} 
+			}
 			if len(step.Selection.Subsets) > len(subsetPartition) || max(step.Selection.Subsets) > len(subsetPartition) {
 				return validateError(idx, "Subset specifies too many partitions")
 			}
@@ -748,7 +746,7 @@ func validateSelections(steps []Step, subsetPartition map[int][]int, config Conf
 			case sequential:
 				for i := range checkLengths {
 					if step.Selection.Range.Start <= 0 ||
-						step.Selection.Range.End-step.Selection.Range.Start+1 > checkLengths[i]||
+						step.Selection.Range.End-step.Selection.Range.Start+1 > checkLengths[i] ||
 						step.Selection.Range.End > checkLengths[i] {
 						return validateError(idx, "Invalid range")
 					}
@@ -772,17 +770,17 @@ func validateSelections(steps []Step, subsetPartition map[int][]int, config Conf
 			numNodes := make([]int, 0)
 			if step.Selection.Subsets == nil {
 				checkLengths = append(checkLengths, config.Nodes)
-				numNodes = append(numNodes, int((float64(percent) / 100.0) * float64(config.Nodes)))
+				numNodes = append(numNodes, int((float64(percent)/100.0)*float64(config.Nodes)))
 			} else {
 				for _, subset := range step.Selection.Subsets {
 					checkLengths = append(checkLengths, len(subsetPartition[subset]))
-					numNodes = append(numNodes, int((float64(percent) / 100.0) * float64(len(subsetPartition[subset]))))
+					numNodes = append(numNodes, int((float64(percent)/100.0)*float64(len(subsetPartition[subset]))))
 				}
 			}
 			switch step.Selection.Percent.Order {
-			case sequential:				
+			case sequential:
 				for i := range checkLengths {
-					if step.Selection.Percent.Start-1+numNodes[i] > checkLengths[i] || step.Selection.Percent.Start < 1{
+					if step.Selection.Percent.Start-1+numNodes[i] > checkLengths[i] || step.Selection.Percent.Start < 1 {
 						return validateError(idx, "Invalid start position")
 					}
 				}
@@ -972,8 +970,8 @@ func makeRange(min, max int) []int {
 	return a
 }
 
-func getRange(raw []int, start int, end int) []int{
-	ret := make([]int, end - start + 1)
+func getRange(raw []int, start int, end int) []int {
+	ret := make([]int, end-start+1)
 	copy(ret, raw[start:end+1])
 	return ret
 }
@@ -986,7 +984,7 @@ func onePerm(N int) []int {
 	return ret
 }
 
-func shuffle(ints []int) []int{
+func shuffle(ints []int) []int {
 	shuffled := make([]int, len(ints))
 	idxs := rand.Perm(len(ints))
 	for i, shufi := range idxs {
