@@ -1,0 +1,30 @@
+name: Test sequential weighted subset divisions
+config:
+  nodes: 5
+  selector: run=go-ipfs-stress
+  times: 1
+  expected:
+      successes: 0
+      failures: 0
+      timeouts: 0
+  subset_partition:
+    partition_type: WEIGHTED
+    order: SEQUENTIAL
+    percents: [40, 40, 20] #Should be 1,2 ; 3,4 ; 5
+steps:
+  - name: run on 1,2
+    cmd: echo "Running on 1 2" > RUNNING_ON_1_2
+    selection:
+      subset:
+        indices: [1]
+  - name: run on 1,2,3,4
+    cmd: echo "Running on 1,2,3,4" > RUNNING_ON_1_2_3_4
+    selection:
+      subset:
+        indices: [1,2]
+  - name: run on 5
+    cmd: echo "Running on 5" > RUNNING_ON_5
+    selection:
+      subset:
+        indices: [3]
+

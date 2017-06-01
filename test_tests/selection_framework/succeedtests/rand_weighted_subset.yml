@@ -1,0 +1,29 @@
+name: Test random weighted subset divisions
+config:
+  nodes: 5
+  selector: run=go-ipfs-stress
+  times: 1
+  expected:
+      successes: 0
+      failures: 0
+      timeouts: 0
+  subset_partition:
+    partition_type: WEIGHTED
+    order: RANDOM
+    percents: [40, 40, 20] #One group of 1 two groups of 2
+steps:
+  - name: run on nodes in group 1
+    cmd: echo "Running on nodes in group 1" > GROUP_1
+    selection:
+      subset:
+        indices: [1]
+  - name: run on nodes in group 1 again
+    cmd: echo "Running on group 1 nodes again " > GROUP_1_AGAIN
+    selection:
+      subset:
+        indices: [1]
+  - name: run on group 3 single node
+    cmd: echo "Running on group 3 (one node)" > GROUP_3_one_NODE
+    selection:
+      subset:
+        indices: [3]

@@ -10,7 +10,8 @@ config:
 steps:
   - name: list nodes
     on_node: 1
-    cmd: ipfs-cluster-ctl --enc json peers ls | jq -r '.[].id' | sort | tr '\n' ' '
+    cmd: "ipfs-cluster-ctl --enc json peers ls | jq -r '.[].id' | sort
+        | tr '\n' ' '"
     timeout: 0
     outputs:
     - line: 0
@@ -18,7 +19,8 @@ steps:
   - name: Check that nodes match
     on_node: 1
     end_node: 5
-    cmd: ipfs-cluster-ctl --enc json peers ls | jq -r '.[].id' | sort | tr '\n' ' '
+    cmd: "ipfs-cluster-ctl --enc json peers ls | jq -r '.[].id' | sort
+        | tr '\n' ' '"
     assertions:
     - line: 0
       should_be_equal_to: PIDS
