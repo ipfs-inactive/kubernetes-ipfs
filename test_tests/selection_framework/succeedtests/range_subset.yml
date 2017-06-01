@@ -1,0 +1,59 @@
+name: Run ranges of nodes from each subset
+config:
+  nodes: 5
+  selector: run=go-ipfs-stress
+  times: 1
+  expected:
+    successes: 0
+    failures: 0
+    timeouts: 0
+  subset_partition:
+    partition_type: WEIGHTED
+    order: SEQUENTIAL
+    percents: [40, 40, 20] #1,2 ; 3,4 ; 5
+steps:
+  - name: run on (1|2) & (3|4) & 5
+    cmd: echo "Running one random from each" > RUN_ONE_RAND_EACH_SBST
+    selection:
+      subset: [1,2,3]
+      range:
+        order: RANDOM
+        number: 1
+  - name: run one on singleton run on node 5
+    cmd: echo "Running singleton" > RUN_ONE_SINGLETON
+    selection:
+      subset: [3]
+      range:
+        order: RANDOM
+        number: 1
+  - name: run on second node of each two elt subset nodes 2,4
+    cmd: echo "Running on second nodes 2, 4"
+    selection:
+      subset: [1,2]
+      range:
+        order: SEQUENTIAL
+        start: 2
+        end: 2
+  - name: run on all nodes of two elt subsets, 1,2,3,4
+    cmd: echo "Run on all nodes (1,2,3,4)" > RUN_1234
+    selection:
+      subset: [1,2]
+      range:
+        order: SEQUENTIAL
+        start: 1
+        end: 2
+  - name: run two random nodes from the two elt subsets {1,2,3,4}
+    cmd: echo "Run on 1,2,3,4 in random order" > RUN_1234_RAND
+    selection:
+      subset: [1,2]
+      range:
+        order: RANDOM
+        number: 2
+  - name: run on the start node of each subset
+    cmd: echo "Running start nodes 1,3,5" > RUN_135_START
+    selection:
+      subset: [1,2,3]
+      range:
+        order: SEQUENTIAL
+        start: 1
+        end: 1
