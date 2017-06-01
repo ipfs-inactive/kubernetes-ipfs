@@ -3,7 +3,7 @@
 go install ..
 test $? -eq 0 || exit 1
 echo "Testing that command runs on correct nodes as specified by selection"
-for t in selection_framework/*.yml; do
+for t in selection_framework/succeedtests/*.yml; do
     kubernetes-ipfs $t
     if [ $? -ne 0 ]; then
         exit 1

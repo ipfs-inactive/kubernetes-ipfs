@@ -11,5 +11,7 @@ steps:
   - name: selecting subsets without specifying partition
     cmd: echo "Should not execute" > should_not_exist.txt
     selection:
-      subset:
-       indices: [1]
+      subset: [1]
+      range:
+        order: RANDOM
+        number: 1

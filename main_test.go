@@ -124,11 +124,26 @@ func TestValidSelectionFiles(t *testing.T) {
   expected[testDir +"/seq_weighted_subset_trunc.yml"][1] = []int{1,2,3,4}
   expected[testDir +"/seq_weighted_subset_trunc.yml"][2] = []int{5}
 
+  expected[testDir +"/range_subset.yml"] = make(map[int][]int)
+  expected[testDir +"/range_subset.yml"][0] = []int{-1,-1,-1}
+  expected[testDir +"/range_subset.yml"][1] = []int{5}
+  expected[testDir +"/range_subset.yml"][2] = []int{2,4}
+  expected[testDir +"/range_subset.yml"][3] = []int{1,2,3,4}
+  expected[testDir +"/range_subset.yml"][4] = []int{-1,-1,-1,-1}
+  expected[testDir +"/range_subset.yml"][5] = []int{1,3,5}
+
+  expected[testDir +"/percent_subset.yml"] = make(map[int][]int)
+  expected[testDir +"/percent_subset.yml"][0] = []int{-1,-1,-1,-1,-1}
+  expected[testDir +"/percent_subset.yml"][1] = []int{3,4}
+  expected[testDir +"/percent_subset.yml"][2] = []int{-1,-1}
+  expected[testDir +"/percent_subset.yml"][3] = []int{-1}
+
   err := filepath.Walk(testDir, visit)
   if err != nil {
     t.Error(err.Error())
   }
 }
+
 
 func slicesEqual(s1, s2 []int) bool {
   if len(s1) != len(s2) {

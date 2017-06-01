@@ -317,7 +317,6 @@ func RunTests (summary *Summary, test *Test, subsetPartition map[int][]int) {
 		envArrays := make(map[string][]string)
 		for _, step := range test.Steps {
 			nodeIndices := selectNodes(step, test.Config, subsetPartition)
-			fmt.Printf("The node indices %v\n", nodeIndices)
 			env, envArrays = handleStep(*pods, &step, summary, env, envArrays, nodeIndices)
 		}
 		summary.TestsRan = summary.TestsRan + 1
@@ -393,19 +392,17 @@ func handleStep(pods GetPodsOutput, step *Step, summary *Summary, env []string, 
 	}
 
 	color.Magenta("Running parallel on %d nodes for %d iterations.", numNodes, numIters)
+	// Command search and replace for index references into array (%i/%s) and 
+	r1, _ := regexp.Compile("\\[%s\\]")
+	r2, _ := regexp.Compile("\\[%i\\]")
 	for i := 0; i < numIters; i++ {
 
 		// Initialize a channel with depth of number of nodes we're testing on simultaneously
 		outputStrings := make(chan []string, numNodes)
 		outputErr := make(chan bool, numNodes)
 		for _, idx := range nodeIndices {
-			// Command search and replace for index references into array (%i/%s) and 
-			r1, _ := regexp.Compile("\\[%s\\]")
-			r2, _ := regexp.Compile("\\[%i\\]")
-
 			command := r1.ReplaceAllString(step.CMD, "[" + strconv.Itoa(idx-1) + "]")
 			command = r2.ReplaceAllString(command, "[" + strconv.Itoa(i) + "]")
-
 			// Hand this channel to the pod runner and let it fill the queue
 			runInPodAsync(pods.Items[idx-1].Metadata.Name, command, env, step.Timeout, outputStrings, outputErr)
 		}
@@ -655,10 +652,10 @@ func selectNodesFromSelection(step Step, config Config, subsetPartition map[int]
 		for _, subset := range step.Selection.Subsets[1:] {
 			nodes = append(nodes, selectNodesRange(step, config, subsetPartition[subset])...)
 		}
-	case step.Selection.Percent != nil && step.Selection.Subsets != nil:
+	case step.Selection.Percent != nil && step.Selection.Subsets == nil:
 		nodes = selectNodesPercent(step, config, makeRange(1, config.Nodes))
 	case step.Selection.Percent != nil && step.Selection.Subsets != nil:
-		nodes = selectNodesRange(step, config, subsetPartition[step.Selection.Subsets[0]])
+		nodes = selectNodesPercent(step, config, subsetPartition[step.Selection.Subsets[0]])
 		for _, subset := range step.Selection.Subsets[1:] {
 			nodes = append(nodes, selectNodesPercent(step, config, subsetPartition[subset])...)
 		}
@@ -681,7 +678,7 @@ func selectNodesRange(step Step, config Config, nodes []int) []int {
 	case sequential:
 		start := step.Selection.Range.Start - 1
 		end := step.Selection.Range.End - 1
-		selection = makeRange(nodes[start], nodes[end])
+		selection = getRange(nodes, start, end)
 	case random:
 		selection = shuffle(nodes)[0:step.Selection.Range.Number]
 	}
@@ -691,12 +688,12 @@ func selectNodesRange(step Step, config Config, nodes []int) []int {
 func selectNodesPercent(step Step, config Config, nodes []int) []int {
 	var selection []int
 	percent := step.Selection.Percent.Percent
-	numNodes := int((float64(percent) / 100.0) * float64(config.Nodes))
+	numNodes := int((float64(percent) / 100.0) * float64(len(nodes)))
 	switch step.Selection.Percent.Order {
 	case sequential:
 		start := step.Selection.Percent.Start - 1 
 		end := step.Selection.Percent.Start - 2 + numNodes
-		selection = makeRange(nodes[start], nodes[end])
+		selection = getRange(nodes, start, end)
 	case random:
 		selection = shuffle(nodes)[0:numNodes]
 	}
@@ -973,6 +970,12 @@ func makeRange(min, max int) []int {
 		a[i] = min + i
 	}
 	return a
+}
+
+func getRange(raw []int, start int, end int) []int{
+	ret := make([]int, end - start + 1)
+	copy(ret, raw[start:end+1])
+	return ret
 }
 
 func onePerm(N int) []int {

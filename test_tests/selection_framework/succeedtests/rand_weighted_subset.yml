@@ -15,15 +15,24 @@ steps:
   - name: run on nodes in group 1
     cmd: echo "Running on nodes in group 1" > GROUP_1
     selection:
-      subset:
-        indices: [1]
+      subset: [1]
+      percent:
+        order: SEQUENTIAL
+        start: 1
+        percent: 100
   - name: run on nodes in group 1 again
     cmd: echo "Running on group 1 nodes again " > GROUP_1_AGAIN
     selection:
-      subset:
-        indices: [1]
+      subset: [1]
+      percent:
+        order: SEQUENTIAL
+        start: 1
+        percent: 100
   - name: run on group 3 single node
     cmd: echo "Running on group 3 (one node)" > GROUP_3_one_NODE
     selection:
-      subset:
-        indices: [3]
+      subset: [3]
+      percent:
+        order: SEQUENTIAL
+        start: 1
+        percent: 100

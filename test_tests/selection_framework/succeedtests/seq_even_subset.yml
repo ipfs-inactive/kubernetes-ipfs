@@ -15,5 +15,8 @@ steps:
   - name: run on odd nodes 1, 3, 5
     cmd: echo "Odd node"
     selection:
-      subset:
-        indices: [1, 3, 5]
+      subset: [1, 3, 5]
+      percent:
+        order: SEQUENTIAL
+        start: 1
+        percent: 100
