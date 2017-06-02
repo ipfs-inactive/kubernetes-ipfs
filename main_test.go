@@ -13,28 +13,27 @@ import (
    data is an array of expected indices, or [-1]*(expected number)*/
 var expected map[string]map[int][]int
 
-func visitBad(path string, f os.FileInfo, err error) error {
-  var test Test
-  if err != nil {
-    return err
-  }
-  if f.IsDir() {
-    return nil /* skip dir, not a test file */
-  }
-  err, test = readTestFile(path)
-  if err != nil {
-    return err
-  }
-  /* This should always error */
-  err1, subsetPartition := partition(test.Config)
-  if err1 != nil {
-    return nil /* Some tests have bad subset partitions specified in configs */
-  }
-  err = validate(test, subsetPartition)
-  if err == nil {
-    return errors.New(fmt.Sprintf("Bad input file %s incorrectly validates", path))
-  }
-  return nil
+func visitBad(path string, f os.FileInfo, pathErr error) error {
+	if pathErr != nil {
+		return pathErr
+	}
+	if f.IsDir() {
+		return nil /* skip dir, not a test file */
+	}
+	test, err := readTestFile(path)
+	if err != nil {
+		return err
+	}
+	/* This should always error */
+	subsetPartition, err := partition(test.Config)
+	if err != nil {
+		return nil /* Some tests have bad subset partitions specified in configs */
+	}
+
+	if err := validate(test, subsetPartition); err == nil {
+		return errors.New(fmt.Sprintf("Bad input file %s incorrectly validates", path))
+	}
+	return nil
 }
 
 func TestBadSelectionFiles(t *testing.T) {
@@ -45,50 +44,48 @@ func TestBadSelectionFiles(t *testing.T) {
 	}
 }
 
-func visit(path string, f os.FileInfo, err error) error {
-  var test Test
-  var subsetPartition map[int][]int
-  if err != nil {
-    return err
-  }
-  if f.IsDir() {
-    return nil /* skip dir, not a test file */
-  }
-  err, test = readTestFile(path)
-  if err != nil {
-    return err
-  }
-  /* This should validate correctly */
-  err1, subsetPartition := partition(test.Config)
-  if err1 != nil {
-    return err
-  }
-  err = validate(test, subsetPartition)
-  if err != nil {
-    return err
-  }
+func visit(path string, f os.FileInfo, pathErr error) error {
+	if pathErr != nil {
+		return pathErr
+	}
+	if f.IsDir() {
+		return nil /* skip dir, not a test file */
+	}
+	test, err := readTestFile(path)
+	if err != nil {
+		return err
+	}
+	/* This should validate correctly */
+	subsetPartition, err := partition(test.Config)
+	if err != nil {
+		return err
+	}
+	err = validate(test, subsetPartition)
+	if err != nil {
+		return err
+	}
 
-  /* Run through steps and check that indices are as expected */
-  color.Cyan("!!! Running test file %s", path)
-  for i, step := range test.Steps {
-    expectedIndices := expected[path][i]
-    actualIndices := selectNodes(step, test.Config, subsetPartition)
-    color.Blue("### Running step %s on nodes %v", step.Name, actualIndices)
-    color.Cyan("### Expecting nodes %v", expectedIndices)
-    if len(actualIndices) == 0 {
-      return errors.New(fmt.Sprintf("Test %s step %d not running on any nodes", path, i))
-    }
-    if expectedIndices[0] < 0 { /* Indicates random selection and value doesn't matter */
-      if len(actualIndices) != len(expectedIndices) {
-        return errors.New(fmt.Sprintf("Test %s step %d running on the wrong number of nodes", path, i))
-      }
-    } else { /* Equality should be exact */
-      if !slicesEqual(actualIndices, expectedIndices) {
-        return errors.New(fmt.Sprintf("Test %s step %d running on the wrong nodes", path, i))
-      }
-    }
-  }
-  return nil
+	/* Run through steps and check that indices are as expected */
+	color.Cyan("!!! Running test file %s", path)
+	for i, step := range test.Steps {
+		expectedIndices := expected[path][i]
+		actualIndices := selectNodes(step, test.Config, subsetPartition)
+		color.Blue("### Running step %s on nodes %v", step.Name, actualIndices)
+		color.Cyan("### Expecting nodes %v", expectedIndices)
+		if len(actualIndices) == 0 {
+			return errors.New(fmt.Sprintf("Test %s step %d not running on any nodes", path, i))
+		}
+		if expectedIndices[0] < 0 { /* Indicates random selection and value doesn't matter */
+			if len(actualIndices) != len(expectedIndices) {
+				return errors.New(fmt.Sprintf("Test %s step %d running on the wrong number of nodes", path, i))
+			}
+		} else { /* Equality should be exact */
+			if !slicesEqual(actualIndices, expectedIndices) {
+				return errors.New(fmt.Sprintf("Test %s step %d running on the wrong nodes", path, i))
+			}
+		}
+	}
+	return nil
 }
 
 func TestValidSelectionFiles(t *testing.T) {
