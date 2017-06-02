@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"math/rand"
 
 	"github.com/davecgh/go-spew/spew"
 	"github.com/fatih/color"
@@ -357,6 +358,7 @@ func handleStep(pods GetPodsOutput, step *Step, summary *Summary, env []string, 
 		}
 	}
 	color.Magenta("$ %s", step.CMD)
+<<<<<<< HEAD
 	numNodes := len(nodeIndices)
 
 	/* Determine number of iterations */
@@ -585,48 +587,16 @@ func runInPodAsync(name string, cmdToRun string, env []string, timeout int, chan
 		}
 		lines = strings.Split(out.String(), "\n")
 		// Feed our output into the channel.
+		//fmt.Println(name, "Waiting on chan_line")
 		chanStrings <- lines
+		//fmt.Println(name, "Waiting on chan_timeout")
 		chanTimeout <- timeout_reached
+		//fmt.Println(name, "GoRoutine Complete")
+
 	}()
 }
 
-func runInPod(name string, cmdToRun string, env []string, timeout int) ([]string, bool) {
-	envString := ""
-	for _, e := range env {
-		envString += e + " "
-	}
-	if envString != "" {
-		envString = envString + "&& "
-	}
-	cmd := exec.Command("kubectl", "exec", name, "-t", "--", "bash", "-c", envString+cmdToRun)
-	var out bytes.Buffer
-	var errout bytes.Buffer
-	cmd.Stdout = &out
-	cmd.Stderr = &errout
-	cmd.Start()
-	timeout_reached := false
 
-	// Handle timeouts
-	if timeout != 0 {
-		timer := time.AfterFunc(time.Duration(timeout)*time.Second, func() {
-			cmd.Process.Kill()
-			timeout_reached = true
-			color.Set(color.FgRed)
-			fmt.Println("Command timed out after", timeout, "seconds")
-			color.Unset()
-		})
-		cmd.Wait()
-		timer.Stop()
-	} else {
-		cmd.Wait()
-	}
-
-	if errout.String() != "" {
-		fmt.Println(errout.String())
-	}
-	lines := strings.Split(out.String(), "\n")
-	return lines[:len(lines)-1], timeout_reached
-}
 
 func selectNodes(step Step, config Config, subsetPartition map[int][]int) []int {
 	var nodes []int
