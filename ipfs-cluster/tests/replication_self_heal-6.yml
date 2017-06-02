@@ -1,0 +1,48 @@
+name: pin with replication factor and block some nodes
+config:
+ nodes: 9
+  selector: app=ipfs-cluster
+  times: 1
+  expected:
+    successes: 1
+    failures: 0
+    timeouts: 0
+  subset_partition:
+    partition_type: WEIGHTED
+    order: RANDOM
+    percents: [60, 40]
+steps:
+  - name: add Y things to ipfs
+    for:
+      iter_structure: BOUND
+      number: 20 # replace with Y using parameter feature
+    cmd: "head -c 100 /dev/urandom | base64 | ipfs add -q && sleep 1"
+    on_node: 1
+    outputs:
+    - line: 0
+      append_to: HASH
+  - name: pin Y things to cluster with rep factor = 3
+    for:
+      iter_structure: HASH
+    cmd: "ipfs_cluster-ctl pin -r 3 add ${HASH[%i]} && sleep 1"
+    selection:
+      subset: [2]
+      range:
+        order: RANDOM
+        number: 1
+  - name: block other random nodes
+    cmd: "killall -STOP ipfs-cluster-service"
+    selection:
+      subset: [2]
+      percent:
+        order: RANDOM
+        percent: 100
+  - name: check that each hash is still present on 3 nodes
+    #TODO actually do this check
+  - name: restore cluster service daemon
+    cmd: "killall -CONT ipfs-cluster-service"
+    selection:
+      subset: [2]
+      percent:
+        order: RANDOM
+        percent: 100

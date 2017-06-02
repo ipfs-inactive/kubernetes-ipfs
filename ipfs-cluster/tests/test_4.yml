@@ -1,0 +1,25 @@
+name: Pin, block, unpin in connected nodes, unblock, check that everything is unpinned
+config:
+  nodes: 5
+  selector: app=ipfs-cluster
+  times: 1
+  expected:
+    successes: 5
+    failures: 0
+    timeouts: 0
+  subset_partition:
+    partition_type: WEIGHTED
+    order: RANDOM
+    percents: [32, 68]
+steps:
+  - name: add random content to each node
+    selection:
+      percent:
+        order: SEQUENTIAL
+        start: 1
+        percent: 100 # Can change based on what Y should be
+    cmd: head -c 10 /dev/urandom | base64 | ipfs add -q
+    outputs:
+    - line: 0
+      save_to: HASH
+
