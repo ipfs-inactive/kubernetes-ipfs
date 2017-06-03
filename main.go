@@ -312,9 +312,11 @@ func RunTests(test Test, subsetPartition map[int][]int) (summary Summary) {
 		env := make([]string, 0)
 		envArrays := make(map[string][]string)
 		for _, step := range test.Steps {
-			nodeIndices := selectNodes(step, test.Config, subsetPartition)
-
-			env, envArrays = handleStep(*pods, &step, &summary, env, envArrays, nodeIndices)
+			numIters := getStepIterations(step, envArrays)
+			for iter := 0; iter < numIters; iter++ {
+				nodeIndices := selectNodes(step, test.Config, subsetPartition)
+				env, envArrays = handleStep(*pods, &step, &summary, env, envArrays, nodeIndices, iter)
+			}
 		}
 		summary.TestsRan = summary.TestsRan + 1
 	}
@@ -350,16 +352,7 @@ func getSubsetBounds(subset int, numSubsets int, numNodes int) (int, int) {
 	return startNode, endNode
 }
 
-func handleStep(pods GetPodsOutput, step *Step, summary *Summary, env []string, envArrays map[string][]string, nodeIndices []int) ([]string, map[string][]string) {
-	color.Blue("### Running step %s on nodes %v", step.Name, nodeIndices)
-	if len(step.Inputs) != 0 {
-		for _, input := range step.Inputs {
-			color.Blue("### Getting variable " + input)
-		}
-	}
-	color.Magenta("$ %s", step.CMD)
-	numNodes := len(nodeIndices)
-
+func getStepIterations(step Step, envArrays map[string][]string) int {
 	/* Determine number of iterations */
 	var numIters int
 	if step.For == nil {
@@ -369,6 +362,18 @@ func handleStep(pods GetPodsOutput, step *Step, summary *Summary, env []string, 
 	} else { /* Iterating over an array */
 		numIters = len(envArrays[step.For.IterStructure])
 	}
+	return numIters
+}
+
+func handleStep(pods GetPodsOutput, step *Step, summary *Summary, env []string, envArrays map[string][]string, nodeIndices []int, iter int) ([]string, map[string][]string) {
+	color.Blue("### Running step %s on nodes %v", step.Name, nodeIndices)
+	if len(step.Inputs) != 0 {
+		for _, input := range step.Inputs {
+			color.Blue("### Getting variable " + input)
+		}
+	}
+	color.Magenta("$ %s", step.CMD)
+	numNodes := len(nodeIndices)
 
 	/* Find all array variables used and add to environment */
 
@@ -379,6 +384,7 @@ func handleStep(pods GetPodsOutput, step *Step, summary *Summary, env []string, 
 		arrayVars = append(arrayVars, raw[1])
 	}
 
+	tmpEnv := env
 	for _, arrayName := range arrayVars {
 		// Go from envArray table at given index to a string defining a bash array
 		bashString := arrayName + "=("
@@ -386,96 +392,94 @@ func handleStep(pods GetPodsOutput, step *Step, summary *Summary, env []string, 
 			bashString += "'" + s + "' "
 		}
 		bashString += ")"
-		env = append(env, bashString)
+		tmpEnv = append(tmpEnv, bashString)
 	}
 
-	color.Magenta("Running parallel on %d nodes for %d iterations.", numNodes, numIters)
+	color.Magenta("Running parallel on %d nodes on iteration %d.", numNodes, iter)
 	// Command search and replace for index references into array (%i/%s) and
 	r1, _ := regexp.Compile("\\[%s\\]")
 	r2, _ := regexp.Compile("\\[%i\\]")
-	for i := 0; i < numIters; i++ {
 
-		// Initialize a channel with depth of number of nodes we're testing on simultaneously
-		outputStrings := make(chan []string, numNodes)
-		outputErr := make(chan bool, numNodes)
-		for _, idx := range nodeIndices {
-			command := r1.ReplaceAllString(step.CMD, "["+strconv.Itoa(idx-1)+"]")
-			command = r2.ReplaceAllString(command, "["+strconv.Itoa(i)+"]")
-			// Hand this channel to the pod runner and let it fill the queue
-			runInPodAsync(pods.Items[idx-1].Metadata.Name, command, env, step.Timeout, outputStrings, outputErr)
+	// Initialize a channel with depth of number of nodes we're testing on simultaneously
+	outputStrings := make(chan []string, numNodes)
+	outputErr := make(chan bool, numNodes)
+	for _, idx := range nodeIndices {
+		command := r1.ReplaceAllString(step.CMD, "["+strconv.Itoa(idx-1)+"]")
+		command = r2.ReplaceAllString(command, "["+strconv.Itoa(iter)+"]")
+		// Hand this channel to the pod runner and let it fill the queue
+		runInPodAsync(pods.Items[idx-1].Metadata.Name, command, tmpEnv, step.Timeout, outputStrings, outputErr)
+	}
+	// Iterate through the queue to pull out results one-by-one
+	// These may be out of order, but is there a better way to do this? Do we need them in order?
+	for j := 0; j < numNodes; j++ {
+		out := <-outputStrings
+		err := <-outputErr
+		if err {
+			summary.Timeouts++
+			continue // skip handling the output or other assertions since it timed out.
 		}
-		// Iterate through the queue to pull out results one-by-one
-		// These may be out of order, but is there a better way to do this? Do we need them in order?
-		for j := 0; j < numNodes; j++ {
-			out := <-outputStrings
-			err := <-outputErr
-			if err {
-				summary.Timeouts++
-				continue // skip handling the output or other assertions since it timed out.
+		if len(step.WriteToFile) != 0 {
+			errWrite := ioutil.WriteFile(step.WriteToFile, []byte(strings.Join(out, "\n")), 0664)
+			if errWrite != nil {
+				color.Red("Failed to write output file: %s", err)
 			}
-			if len(step.WriteToFile) != 0 {
-				errWrite := ioutil.WriteFile(step.WriteToFile, []byte(strings.Join(out, "\n")), 0664)
-				if errWrite != nil {
-					color.Red("Failed to write output file: %s", err)
+		}
+		if len(step.Outputs) != 0 {
+			for index, output := range step.Outputs {
+				if index >= len(out) {
+					color.Red("Not enough lines in output. Skipping")
+					break
+				}
+				line := out[index]
+				if output.SaveTo != "" {
+					color.Magenta("### Saving output from line %d to variable %s: %s", output.Line, output.SaveTo, line)
+					env = append(env, output.SaveTo+"=\""+line+"\"")
+				} else if output.AppendTo != "" {
+					color.Magenta("### Appending output from line %d to array variable %s: %s", output.Line, output.AppendTo, line)
+					array, ok := envArrays[output.AppendTo]
+					if !ok {
+						envArrays[output.AppendTo] = make([]string, 0)
+					}
+					envArrays[output.AppendTo] = append(array, line)
 				}
 			}
-			if len(step.Outputs) != 0 {
-				for index, output := range step.Outputs {
-					if index >= len(out) {
-						color.Red("Not enough lines in output. Skipping")
+		}
+		if len(step.Assertions) != 0 {
+			for _, assertion := range step.Assertions {
+				if assertion.Line >= len(out) {
+					color.Red("Not enough lines in output.Skipping assertions")
+					break
+				}
+				lineToAssert := out[assertion.Line]
+				value := ""
+				// Find an env that matches the ShouldBeEqualTo variable
+				// i.e. RESULT="abc abc" matches ShouldBeEqualTo: RESULT
+				// value becomes then abc abc (without quotes)
+				for _, e := range env {
+					rex := regexp.MustCompile(
+						fmt.Sprintf("^%s=\"(.*)\"$",
+							assertion.ShouldBeEqualTo))
+					found := rex.FindStringSubmatch(e)
+					if len(found) == 2 && found[1] != "" {
+						value = found[1]
 						break
-					}
-					line := out[index]
-					if output.SaveTo != "" {
-						color.Magenta("### Saving output from line %d to variable %s: %s", output.Line, output.SaveTo, line)
-						env = append(env, output.SaveTo+"=\""+line+"\"")
-					} else if output.AppendTo != "" {
-						color.Magenta("### Appending output from line %d to array variable %s: %s", output.Line, output.AppendTo, line)
-						array, ok := envArrays[output.AppendTo]
-						if !ok {
-							envArrays[output.AppendTo] = make([]string, 0)
-						}
-						envArrays[output.AppendTo] = append(array, line)
 					}
 				}
-			}
-			if len(step.Assertions) != 0 {
-				for _, assertion := range step.Assertions {
-					if assertion.Line >= len(out) {
-						color.Red("Not enough lines in output.Skipping assertions")
-						break
-					}
-					lineToAssert := out[assertion.Line]
-					value := ""
-					// Find an env that matches the ShouldBeEqualTo variable
-					// i.e. RESULT="abc abc" matches ShouldBeEqualTo: RESULT
-					// value becomes then abc abc (without quotes)
-					for _, e := range env {
-						rex := regexp.MustCompile(
-							fmt.Sprintf("^%s=\"(.*)\"$",
-								assertion.ShouldBeEqualTo))
-						found := rex.FindStringSubmatch(e)
-						if len(found) == 2 && found[1] != "" {
-							value = found[1]
-							break
-						}
-					}
-					// If nothing was found in the environment,
-					// assume its a literal
-					if value == "" {
-						value = assertion.ShouldBeEqualTo
-					}
-					if lineToAssert != value {
-						color.Set(color.FgRed)
-						fmt.Println("Assertion failed!")
-						fmt.Printf("Actual value=%s\n", lineToAssert)
-						fmt.Printf("Expected value=%s\n\n", value)
-						color.Unset()
-						summary.Failures = summary.Failures + 1
-					} else {
-						summary.Successes = summary.Successes + 1
-						color.Green("Assertion Passed")
-					}
+				// If nothing was found in the environment,
+				// assume its a literal
+				if value == "" {
+					value = assertion.ShouldBeEqualTo
+				}
+				if lineToAssert != value {
+					color.Set(color.FgRed)
+					fmt.Println("Assertion failed!")
+					fmt.Printf("Actual value=%s\n", lineToAssert)
+					fmt.Printf("Expected value=%s\n\n", value)
+					color.Unset()
+					summary.Failures = summary.Failures + 1
+				} else {
+					summary.Successes = summary.Successes + 1
+					color.Green("Assertion Passed")
 				}
 			}
 		}

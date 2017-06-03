@@ -1,0 +1,19 @@
+name: Test iteration on random nodes
+config:
+  nodes: 5
+  selector: run=go-ipfs-stress
+  times: 1
+  expected:
+    successes: 0
+    failures: 0
+    timeouts: 0
+steps:
+  - name: iterate on random nodes (index should change)
+    for:
+      iter_structure: BOUND
+      number: 10
+    cmd: "echo Iterate random"
+    selection:
+      range:
+        order: RANDOM
+        number: 1
