@@ -223,6 +223,12 @@ type TestConfig struct {
 	Params Params `yaml:"params"`
 }
 
+func newTestConfig() TestConfig {
+	return TestConfig{
+		Params: make(Params),
+	}
+}
+
 func (config TestConfig) addParams(params Params) {
 	for k, v := range params {
 		config.Params[k] = v
@@ -234,13 +240,13 @@ func loadConfigFile(configPath string) (TestConfig, error) {
 
 	fileData, err := ioutil.ReadFile(configPath)
 	if err != nil {
-		return TestConfig{}, err
+		return newTestConfig(), err
 	}
 
 	var testConfig TestConfig
 	err = yaml.Unmarshal([]byte(fileData), &testConfig)
 	if err != nil {
-		return TestConfig{}, err
+		return newTestConfig(), err
 	}
 
 	return testConfig, nil
@@ -316,20 +322,12 @@ func main() {
 
 	debug("## Loading " + filePath)
 
-	test, err := readTestFile(filePath)
+	test, err := loadTest(filePath, testConfig)
 	if err != nil {
 		fatal(err)
 	}
 
-	testData, err := replaceParams(fileData, testConfig.Params)
-	if err != nil {
-		fatal(err)
-	}
-
-	var test Test
-	var summary Summary
-
-	err = yaml.Unmarshal([]byte(testData), &test)
+	subsetPartition, err := partition(test.Config)
 	if err != nil {
 		fatal(err)
 	}
@@ -341,14 +339,19 @@ func main() {
 	PrintResults(summary, test)
 }
 
-func readTestFile(filePath string) (Test, error) {
+func loadTest(filePath string, testConfig TestConfig) (Test, error) {
 	var test Test
 	fileData, err := ioutil.ReadFile(filePath)
 	if err != nil {
 		return test, err
 	}
 
-	if err := yaml.Unmarshal([]byte(fileData), &test); err != nil {
+	testData, err := replaceParams(fileData, testConfig.Params)
+	if err != nil {
+		fatal(err)
+	}
+
+	if err := yaml.Unmarshal([]byte(testData), &test); err != nil {
 		return test, err
 	}
 
@@ -422,8 +425,41 @@ func PrintResults(summary Summary, test Test) {
 	os.Exit(evaluateOutcome(summary, test.Config.Expected)) // Returns success on all tests to OS; this allows for test scripting.
 }
 
-func handleStep(pods GetPodsOutput, step *Step, summary *Summary, env []string) []string {
-	color.Blue("### Running step %s on nodes %d to %d", step.Name, step.OnNode, step.EndNode)
+func getSubsetBounds(subset int, numSubsets int, numNodes int) (int, int) {
+	var offset1 int
+	if (((subset - 1) * numNodes) % numSubsets) > 0 {
+		offset1 = 1
+	} else {
+		offset1 = 0
+	}
+	startNode := 1 + (subset-1)*numNodes/numSubsets + offset1
+
+	var offset2 int
+	if ((subset * numNodes) % numSubsets) > 0 {
+		offset2 = 1
+	} else {
+		offset2 = 0
+	}
+	endNode := subset*numNodes/numSubsets + offset2
+
+	return startNode, endNode
+}
+
+func getStepIterations(step Step, envArrays map[string][]string) int {
+	/* Determine number of iterations */
+	var numIters int
+	if step.For == nil {
+		numIters = 1
+	} else if step.For.IterStructure == "BOUND" {
+		numIters = step.For.Number
+	} else { /* Iterating over an array */
+		numIters = len(envArrays[step.For.IterStructure])
+	}
+	return numIters
+}
+
+func handleStep(pods GetPodsOutput, step *Step, summary *Summary, env []string, envArrays map[string][]string, nodeIndices []int, iter int) ([]string, map[string][]string) {
+	color.Blue("### Running step %s on nodes %v", step.Name, nodeIndices)
 	if len(step.Inputs) != 0 {
 		for _, input := range step.Inputs {
 			color.Blue("### Getting variable " + input)
@@ -784,7 +820,7 @@ func validateSelections(steps []Step, subsetPartition map[int][]int, config Conf
 			return validateError(idx, "Two selection formats")
 		case step.Selection.Subsets != nil:
 			if subsetPartition == nil {
-				return validateError(idx, "Subset specified without specifying partion in header")
+				return validateError(idx, "Subset specified without specifying partition in header")
 			}
 			if len(step.Selection.Subsets) > len(subsetPartition) || max(step.Selection.Subsets) > len(subsetPartition) {
 				return validateError(idx, "Subset specifies too many partitions")
