@@ -8,20 +8,21 @@ config:
 steps:
   - name: add random stuff to ipfs
     on_node: 1
-    cmd: head -c 100 /dev/urandom | base64 | ipfs add -q
+    cmd: "head -c 100 /dev/urandom | base64 | ipfs add -q"
     outputs:
     - line: 0
       save_to: HASH
   - name: add to ipfs cluster
     on_node: 1
-    cmd: ipfs-cluster-ctl pin add $HASH && sleep 1
+    cmd: "ipfs-cluster-ctl pin add $HASH && sleep 1"
   - name: change replication factor to 1
     on_node: 2
-    cmd: ipfs-cluster-ctl pin add -r 1 $HASH && sleep 1
+    cmd: "ipfs-cluster-ctl pin add -r 1 $HASH && sleep 1"
   - name: check that it is only replicated in 1 node
     on_node: 1
     end_node: 5
-    cmd: ipfs-cluster-ctl --enc json status $HASH | jq -r '.peer_map | .[].status' | sort | uniq -c | sed 's/^ *//'
+    cmd: "ipfs-cluster-ctl --enc json status $HASH
+        | jq -r '.peer_map | .[].status' | sort | uniq -c | sed 's/^ *//'"
     assertions:
       - line: 0
         should_be_equal_to: "1 pinned"
@@ -29,11 +30,12 @@ steps:
         should_be_equal_to: "5 remote"
   - name: change replication factor to 3
     on_node: 2
-    cmd: ipfs-cluster-ctl pin add -r 3 $HASH && sleep 1
+    cmd: "ipfs-cluster-ctl pin add -r 3 $HASH && sleep 1"
   - name: check that it is only replicated in 3 node
     on_node: 1
     end_node: 5
-    cmd: ipfs-cluster-ctl --enc json status $HASH | jq -r '.peer_map | .[].status' | sort | uniq -c | sed 's/^ *//'
+    cmd: "ipfs-cluster-ctl --enc json status $HASH
+        | jq -r '.peer_map | .[].status' | sort | uniq -c | sed 's/^ *//'"
     assertions:
       - line: 0
         should_be_equal_to: "3 pinned"
@@ -41,16 +43,17 @@ steps:
         should_be_equal_to: "3 remote"
   - name: change replication to 100000 and expect error
     on_node: 1
-    cmd: ipfs-cluster-ctl pin add -r 1000000 $HASH 2>&1 >/dev/null | grep -o Error
+    cmd: "ipfs-cluster-ctl --enc json pin add -r 1000000 $HASH | jq .code"
     assertions:
       - line: 0
-        should_be_equal_to: "Error"
+        should_be_equal_to: "500"
   - name: change replication to -1
     on_node: 3
-    cmd: ipfs-cluster-ctl pin add -r -1 $HASH
+    cmd: "ipfs-cluster-ctl pin add -r -1 $HASH"
   - name: check that it is pinned everywhere
     on_node: 1
-    cmd: ipfs-cluster-ctl --enc json status $HASH | jq -r '.peer_map | .[].status' | sort | uniq -c | sed 's/^ *//'
+    cmd: "ipfs-cluster-ctl --enc json status $HASH
+        | jq -r '.peer_map | .[].status' | sort | uniq -c | sed 's/^ *//'"
     assertions:
       - line: 0
         should_be_equal_to: "6 pinned"

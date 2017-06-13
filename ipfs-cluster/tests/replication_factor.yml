@@ -8,17 +8,18 @@ config:
 steps:
   - name: add random stuff to ipfs
     on_node: 1
-    cmd: head -c 100 /dev/urandom | base64 | ipfs add -q
+    cmd: "head -c 100 /dev/urandom | base64 | ipfs add -q"
     outputs:
     - line: 0
       save_to: HASH
   - name: add to ipfs cluster with replication factor 3
     on_node: 1
-    cmd: ipfs-cluster-ctl pin add -r 3 $HASH && sleep 1
+    cmd: "ipfs-cluster-ctl pin add -r 3 $HASH && sleep 1"
   - name: check that it is only replicated in 3 nodes
     on_node: 1
     end_node: 5
-    cmd: ipfs-cluster-ctl --enc json status $HASH | jq -r '.peer_map | .[].status' | sort | uniq -c | sed 's/^ *//'
+    cmd: "ipfs-cluster-ctl --enc json status $HASH
+        | jq -r '.peer_map | .[].status' | sort | uniq -c | sed 's/^ *//'"
     assertions:
       - line: 0
         should_be_equal_to: "3 pinned"

@@ -1,0 +1,43 @@
+name: Run percents of nodes from each subset
+config:
+  nodes: 5
+  selector: run=go-ipfs-stress
+  times: 1
+  expected:
+    successes: 0
+    failures: 0
+    timeouts: 0
+  subset_partition:
+    partition_type: WEIGHTED
+    order: SEQUENTIAL
+    percents: [80, 20] #1,2,3,4 ; 5
+steps:
+  - name: run all nodes  1,2,3,4,5
+    cmd: echo "all nodes"
+    selection:
+      subset: [1,2]
+      percent:
+        order: RANDOM
+        percent: 100
+  - name: run half of big group 3,4
+    cmd: echo "half of big group"
+    selection:
+      subset: [1]
+      percent:
+        order: SEQUENTIAL
+        start: 3
+        percent: 50
+  - name: run random half of big group
+    cmd: echo "random half of big group"
+    selection:
+      subset: [1]
+      percent:
+        order: RANDOM
+        percent: 50
+  - name: run random 1/4 (rounding down) of big group
+    cmd: echo "random one fourth"
+    selection:
+      subset: [1]
+      percent:
+        order: RANDOM
+        percent: 30

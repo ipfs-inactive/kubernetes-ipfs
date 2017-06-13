@@ -1,0 +1,42 @@
+name: Test append_to epoch times
+config:
+  nodes: 5
+  selector: run=go-ipfs-stress
+  times: 1
+  expected:
+    successes: 0
+    failures: 0
+    timeouts: 0
+steps:
+  - name: first time added
+    cmd: "date +'%s' && sleep 1"
+    selection:
+      range:
+        order: RANDOM
+        number: 1
+    outputs:
+    - line: 0
+      append_to: TIME
+  - name:  second time added
+    cmd: "date +'%s' && sleep 1"
+    selection:
+      range:
+        order: RANDOM
+        number: 1
+    outputs:
+    - line: 0
+      append_to: TIME
+  - name: third time added
+    cmd: "date +'%s' && sleep 1"
+    selection:
+      range:
+        order: RANDOM
+        number: 1
+    outputs:
+    - line: 0
+      append_to: TIME
+  - name: output to node 1
+    for:
+      iter_structure: TIME
+    cmd: "echo ${TIME[%i]}>> epoch_out.txt"
+    on_node: 1

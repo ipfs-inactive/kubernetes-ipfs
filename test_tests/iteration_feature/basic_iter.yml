@@ -1,0 +1,16 @@
+name: Test iteration
+config:
+  nodes: 5
+  selector: run=go-ipfs-stress
+  times: 1
+  expected:
+    successes: 0
+    failures: 0
+    timeouts: 0
+steps:
+  - name: iterate on first node 4 times
+    for:
+      iter_structure: BOUND
+      number: 4
+    cmd: "echo Iterate >> iterate.txt"
+    on_node: 1
