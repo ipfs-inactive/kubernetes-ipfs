@@ -17,44 +17,75 @@ steps:
       iter_structure: BOUND
       number: 20 # replace with Y using parameter feature
     cmd: "head -c 100 /dev/urandom | base64 | ipfs add -q && sleep 1"
-    on_node: 1
+    selection:
+      range:
+        order: RANDOM
+        number: 1
     outputs:
     - line: 0
       append_to: HASH
   - name: pin hashes to cluster
     for:
       iter_structure: HASH
-    cmd: "ipfs_cluster-ctl pin add ${HASH[%i]} && sleep 1"
+    cmd: "ipfs-cluster-ctl pin add ${HASH[%i]} && sleep 1"
+    selection:
+      range:
+        order: RANDOM
+        number: 1
+  - name: check all hashes are pinned
     on_node: 1
-#TODO check that each hash is successfully pinned
- - name: block minority of cluster
-   cmd: "killall -STOP ipfs-cluster-service"
-   selection:
-     subset: [2]
-     percent:
-       order: RANDOM
-       percent: 100
- - name: Make Y unpins in connected majority
-   for:
-     iter_structure: HASH
-   cmd: "ipfs-cluster-ctl pin rm ${HASH[%i]} && sleep 1"
-   selection:
-     subset: [1]
-     range:
-       order: RANDOM
-       number: 1
-
- - name: Check that nothing is pinned in majority group
- #TODO check nothing is pinned
- - name: unblock minority
-   cmd: "killall -CONT ipfs-cluster-service"
-   selection:
-     subset: [2]
-     percent:
-       order: RANDOM
-       percent: 100
- - name: wait 10 seconds for everyone to come back
-   cmd: "sleep 10"
-   on_node: 1
- - name: check that nothing is pinned anymore
- #TODO check nothing is pinned
+    for:
+      iter_structure: HASH
+    cmd: "ipfs-cluster-ctl --enc json status ${HASH[%i]}
+        | jq -r '.peer_map | .[].status' | sort
+        | tee /tmp/allout.txt | uniq | tee /tmp/singleout.txt
+        && cat /tmp/allout.txt | wc -l && cat /tmp/singleout.txt | wc -l"
+    assertions:
+      - line: 0
+        should_be_equal_to: "pinned"
+      - line: 1
+        should_be_equal_to: "9" #Number of nodes (everyone pins)
+      - line: 2
+        should_be_equal_to: "1"
+#  - name: block minority of cluster
+#    cmd: "killall -STOP ipfs-cluster-service"
+#    selection:
+#      subset: [2]
+#      percent:
+#        order: RANDOM
+#        percent: 100
+  - name: Make Y unpins in connected majority
+    for:
+      iter_structure: HASH
+    cmd: "ipfs-cluster-ctl pin rm ${HASH[%i]} && sleep 1"
+    selection:
+      subset: [1]
+      range:
+        order: RANDOM
+        number: 1
+#  - name: unblock minority
+#    cmd: "killall -CONT ipfs-cluster-service"
+#    selection:
+#      subset: [2]
+#      percent:
+#        order: RANDOM
+#        percent: 100
+  - name: wait 10 seconds for everyone to come back
+    cmd: "sleep 10"
+    on_node: 1
+  - name: check that nothing is pinned anywhere anymore
+    for:
+       iter_structure: HASH
+    selection:
+      percent:
+        order: SEQUENTIAL
+        percent: 100
+        start: 1
+    cmd: "ipfs-cluster-ctl --enc json status ${HASH[%i]}
+        | jq -r '.peer_map | .[].status' | sort | uniq
+        | tee /tmp/singleout.txt && cat /tmp/singleout.txt | wc -l"
+    assertions:
+      - line: 0
+        should_be_equal_to: "unpinned"
+      - line: 1
+        should_be_equal_to: "1"
