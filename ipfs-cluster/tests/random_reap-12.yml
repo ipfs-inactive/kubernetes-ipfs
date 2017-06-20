@@ -25,7 +25,7 @@ steps:
       percent:
         order: RANDOM
         percent: 100
-    cmd: "pkill -CONT -f random-stopper.sh"
+    cmd: "kill -CONT $(cat /data/ipfs-cluster/random-stopper-pid)"
   - name: pin files while potentially being shutdown
     for:
       iter_structure: HASH
@@ -41,6 +41,7 @@ steps:
           else
              echo 'no';
           fi"
+    selection:
       range:
         order: RANDOM
         number: 1
@@ -52,7 +53,7 @@ steps:
       percent:
         order: RANDOM
         percent: 100
-    cmd: "pkill -STOP -f random-stopper"
+    cmd: "kill -STOP $(cat /data/ipfs-cluster/random-stopper-pid)"
   - name: make sure cluster is running
     selection:
       percent:

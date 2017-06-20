@@ -4,14 +4,14 @@ config:
   selector: app=ipfs-cluster
   times: 1
   expected:
-    successes: 5 # Y, the number of files that should be pinned
+    successes: 20 # Y, the number of files that should be pinned
     failures: 0
     timeouts: 0
 steps:
   - name: add large files to ipfs
     for:
       iter_structure: BOUND
-      number: 5 #Y
+      number: 20 #Y
     cmd: "head -c 100 /dev/urandom | base64 | ipfs add -q"
     selection:
       range:
@@ -25,7 +25,7 @@ steps:
       percent:
         order: RANDOM
         percent: 100
-    cmd: "pkill -CONT -f random-killer.sh"
+    cmd: "kill -CONT $(cat /data/ipfs-cluster/random-killer-pid)"
   - name: pin files while potentially being shutdown
     for:
       iter_structure: HASH
@@ -33,13 +33,14 @@ steps:
        # 1. contains hash
        # 2. has 3 lines
        # 3. does not contain error
-    cmd: "ipfs-cluster-ctl pin add ${HASH[%i]} > /tmp/out.txt &&
+    cmd: "ipfs-cluster-ctl pin add ${HASH[%i]} > /tmp/out.txt;
           if [[ $(cat /tmp/out.txt) = *${HASH[%i]}* ]] &&
              [[ $(cat /tmp/out.txt) != *error* ]] &&
              [[ $(cat /tmp/out.txt | wc -l) = 3 ]]; then
              echo 'yes';
           else
              echo 'no';
+             cat /tmp/out.txt;
           fi"
     selection:
       range:
@@ -48,18 +49,13 @@ steps:
     outputs:
     - line: 0
       append_to: SUCCESS
+
   - name: stop the random-killer once the cluster service is started up in the background
     selection:
       percent:
         order: RANDOM
         percent: 100
-    cmd: " DONE=1; while [ $DONE = 1 ]; do
-           sleep 0.1
-           if [ $(pgrep -f ipfs-cluster-service) ]; then
-             pkill -STOP -f random-killer;
-             DONE=0;
-           fi;
-           done"
+    cmd: "/usr/local/bin/wait-killer-stopper.sh"
   - name: ensure that all hashes that were pinned successfully are properly replicated in cluster
     for:
       iter_structure: HASH
@@ -75,7 +71,7 @@ steps:
             | tee /tmp/allout.txt | uniq > /tmp/singleout.txt;
 
             if [[ $(cat /tmp/singleout.txt) = 'pinned' ]] &&
-              [[ $(cat /tmp/allout.txt | wc -l) = '2' ]]; then
+               [[ $(cat /tmp/allout.txt | wc -l) = '2' ]]; then
               echo 'success';
             else
               echo 'failure';

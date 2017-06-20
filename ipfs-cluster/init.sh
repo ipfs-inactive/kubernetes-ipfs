@@ -15,7 +15,7 @@ echo
 echo "Waiting for all containers to be running"
 
 while true; do
-    sleep 1
+    sleep 10
     statuses=`kubectl get pods -l 'app=ipfs-cluster' -o jsonpath='{.items[*].status.phase}' | xargs -n1`
     echo $statuses
     all_running="yes"
@@ -30,6 +30,9 @@ while true; do
 done
 
 sleep 5
+if [[ $1 == "quick" ]]; then
+    return 0;
+fi
 
 echo
 echo "Adding peers to cluster"
@@ -47,5 +50,5 @@ echo "To access Grafana for viewing metrics gathered by Prometheus, run the foll
 echo
 echo $'pod=$(kubectl get pods --namespace=monitoring | grep grafana-core | awk \'{print $1}\')'
 echo 'kubectl port-forward --namespace=monitoring $pod 3000:3000'
-echo 
+echo
 echo "Then navigate to localhost:3000 in your browser."

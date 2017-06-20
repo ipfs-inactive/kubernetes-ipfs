@@ -1,6 +1,6 @@
 name: Pin Large Files
 config:
-  nodes: 6
+  nodes: 2
   selector: app=ipfs-cluster
   times: 1
   expected:
