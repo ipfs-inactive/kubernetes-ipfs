@@ -13,7 +13,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"math/rand"
 
 	"github.com/davecgh/go-spew/spew"
 	"github.com/fatih/color"
