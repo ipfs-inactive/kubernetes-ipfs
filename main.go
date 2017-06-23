@@ -375,7 +375,7 @@ func handleStep(pods GetPodsOutput, step *Step, summary *Summary, env []string, 
 	}
 	color.Magenta("$ %s", step.CMD)
 	numNodes := len(nodeIndices)
-
+  //fmt.Printf("EnvArrays: %v\n", envArrays)
 	/* Find all array variables used and add to environment */
 
 	r, _ := regexp.Compile("([a-zA-Z_][a-zA-Z0-9_]*)\\[(%s|%i)\\]")
@@ -402,8 +402,8 @@ func handleStep(pods GetPodsOutput, step *Step, summary *Summary, env []string, 
 	r2, _ := regexp.Compile("\\[%i\\]")
 
 	// Initialize a channel with depth of number of nodes we're testing on simultaneously
-	outputStrings := make(chan []string, numNodes)
-	outputErr := make(chan bool, numNodes)
+	outputStrings := make(chan []string)
+	outputErr := make(chan bool)
 	for _, idx := range nodeIndices {
 		command := r1.ReplaceAllString(step.CMD, "["+strconv.Itoa(idx-1)+"]")
 		command = r2.ReplaceAllString(command, "["+strconv.Itoa(iter)+"]")
@@ -413,7 +413,10 @@ func handleStep(pods GetPodsOutput, step *Step, summary *Summary, env []string, 
 	// Iterate through the queue to pull out results one-by-one
 	// These may be out of order, but is there a better way to do this? Do we need them in order?
 	for j := 0; j < numNodes; j++ {
+
 		out := <-outputStrings
+		//fmt.Printf("The output strings coming from the channel: %v\n", out)
+
 		err := <-outputErr
 		if err {
 			summary.Timeouts++
@@ -553,9 +556,9 @@ func scaleTo(cfg *Config) error {
 func runInPodAsync(name string, cmdToRun string, env []string, timeout int, chanStrings chan []string, chanTimeout chan bool) {
 	go func() {
 		var lines []string
-		defer func() {
-			chanStrings <- lines
-		}()
+		// defer func() {
+		// 	chanStrings <- lines
+		// }()
 		envString := ""
 		for _, e := range env {
 			envString += e + " "
@@ -564,6 +567,7 @@ func runInPodAsync(name string, cmdToRun string, env []string, timeout int, chan
 			envString = envString + "&& "
 		}
 		cmd := exec.Command("kubectl", "exec", name, "-t", "--", "bash", "-c", envString+cmdToRun)
+		//fmt.Printf("The kubectl command: %s\n", cmd)
 		var out bytes.Buffer
 		var errout bytes.Buffer
 		cmd.Stdout = &out
@@ -590,6 +594,7 @@ func runInPodAsync(name string, cmdToRun string, env []string, timeout int, chan
 			fmt.Println(errout.String())
 		}
 		lines = strings.Split(out.String(), "\n")
+		//fmt.Printf("Lines being fed into channel %v", lines)
 		// Feed our output into the channel.
 		//fmt.Println(name, "Waiting on chan_line")
 		chanStrings <- lines

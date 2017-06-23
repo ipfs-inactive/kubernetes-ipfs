@@ -1,6 +1,6 @@
 name: Y (for now 2) pins, first half of tests 10 & 11
 config:
-  nodes: {{N}} # param
+  nodes: 6 # param
   selector: app=ipfs-cluster
   times: 1
   expected:
@@ -61,7 +61,11 @@ steps:
       - line: 0
         should_be_equal_to: "success"
   - name: remove all peers in the departing group from the bootstrapper
-    on_node: {{N}} # The last node (always the bootstrapper and always in staying group)
+    selection:
+      subset: [2]
+      range:
+        order: RANDOM
+        number: 1
     for:
       iter_structure: DEPART_MHs
     cmd: "ipfs-cluster-ctl peers rm ${DEPART_MHs[%i]}"
@@ -127,7 +131,11 @@ steps:
   - name: add back all departed peers from the bootstrapper
     for:
       iter_structure: ADDR
-    on_node: {{N}} # the last node is the bootstrapper
+    selection:
+      subset: [2]
+      range:
+        order: RANDOM
+        number: 1
     cmd: "sleep 20; ipfs-cluster-ctl peers add ${ADDR[%i]}"
   - name: ensure all peers see the peers that always stayed in cluster
     for:

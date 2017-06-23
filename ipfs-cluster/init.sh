@@ -31,7 +31,7 @@ done
 
 sleep 5
 if [[ $1 == "quick" ]]; then
-    return 0;
+    exit 0;
 fi
 
 echo

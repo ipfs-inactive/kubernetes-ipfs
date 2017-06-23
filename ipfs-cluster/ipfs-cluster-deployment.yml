@@ -48,7 +48,7 @@ metadata:
     prometheus.io/port: "5001"
     prometheus.io/path: "debug/metrics/prometheus"
 spec:
-  replicas: 1
+  replicas: 2
   template:
     metadata:
       labels:
