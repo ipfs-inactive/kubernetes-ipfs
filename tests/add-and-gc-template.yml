@@ -1,0 +1,30 @@
+name: Add and GC
+config:
+  selector: run=go-ipfs-stress
+  nodes: {{ NUM_NODES }}
+  times: {{ NUM_TIMES }}
+  expected:
+      successes: {{ NUM_TIMES }}
+      failures: 0
+      timeouts: 0
+steps:
+  - name: Add file
+    on_node: {{ON_NODE }}
+    cmd: head -c {{FILE_SIZE}} /dev/urandom | base64 > /tmp/file.txt && cat /tmp/file.txt && ipfs add -q /tmp/file.txt
+    outputs: 
+    - line: 0
+      save_to: FILE
+    - line: 1
+      save_to: HASH
+  - name: Cat added file
+    on_node: {{    ON_NODE}}
+    inputs:
+      - FILE
+      - HASH
+    cmd: ipfs cat $HASH
+    assertions:
+    - line: 0
+      should_be_equal_to: FILE
+  - name: Run GC
+    on_node: 1
+    cmd: ipfs repo gc

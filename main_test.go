@@ -20,7 +20,7 @@ func visitBad(path string, f os.FileInfo, pathErr error) error {
 	if f.IsDir() {
 		return nil /* skip dir, not a test file */
 	}
-	test, err := readTestFile(path)
+	test, err := loadTest(path, newTestConfig())
 	if err != nil {
 		return err
 	}
@@ -51,7 +51,7 @@ func visit(path string, f os.FileInfo, pathErr error) error {
 	if f.IsDir() {
 		return nil /* skip dir, not a test file */
 	}
-	test, err := readTestFile(path)
+	test, err := loadTest(path, newTestConfig())
 	if err != nil {
 		return err
 	}

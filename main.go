@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
 	"io/ioutil"
 	"math/rand"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -217,24 +219,110 @@ type GetPodsOutput struct {
 	Items []Pod `json:"items"`
 }
 
+type TestConfig struct {
+	Params Params `yaml:"params"`
+}
+
+func newTestConfig() TestConfig {
+	return TestConfig{
+		Params: make(Params),
+	}
+}
+
+func (config TestConfig) addParams(params Params) {
+	for k, v := range params {
+		config.Params[k] = v
+	}
+}
+
+func loadConfigFile(configPath string) (TestConfig, error) {
+	debug("Loading config file")
+
+	fileData, err := ioutil.ReadFile(configPath)
+	if err != nil {
+		return newTestConfig(), err
+	}
+
+	var testConfig TestConfig
+	err = yaml.Unmarshal([]byte(fileData), &testConfig)
+	if err != nil {
+		return newTestConfig(), err
+	}
+
+	return testConfig, nil
+}
+
 func fatal(i interface{}) {
 	fmt.Fprintln(os.Stderr, i)
 	os.Exit(1)
 }
 
-func init() {
-	rand.Seed(time.Now().UTC().UnixNano())
+func usage() {
+	fmt.Fprintf(os.Stderr, "USAGE\n")
+	fmt.Fprintf(os.Stderr, "  kubernetes-ipfs"+
+		" [--param <name>:<value>,...]"+
+		" [--config <config_file>]"+
+		" <testfile>\n\n")
+	fmt.Fprintf(os.Stderr, "OPTIONS\n")
+	// print each flag's description
+	flag.PrintDefaults()
+	// tack on `--help` flag at the end, previous command doesn't print it
+	fmt.Fprintf(os.Stderr,
+		`  -help
+        Show this help message and exit`)
+	fmt.Fprintf(os.Stderr, "\n")
 }
 
 func main() {
-	if len(os.Args) != 2 {
-		fmt.Println("Usage: ", os.Args[0], "<testfile>")
+	// set usage
+	flag.Usage = usage
+
+	cliParams := make(Params)
+	flag.Var(&cliParams, "param",
+		`Replace all test parameter instances of <name> with <value>.
+        Separate multiple `+"`<name>=<value>` inputs with ',' or pass this flag multiple times.")
+
+	var paramFile string
+	paramFileDummy := "<testfile_dir>/config.yml"
+	flag.StringVar(&paramFile, "config", paramFileDummy,
+		"Load test parameters from `<config_file>`")
+
+	// parse all args
+	flag.Parse()
+
+	args := append([]string{os.Args[0]}, flag.Args()...)
+	if len(args) != 2 {
+		// no test file in input, print usage and exit
+		usage()
 		os.Exit(1)
 	}
-	filePath := os.Args[1]
+
+	// test file should be only arg after parsing flags
+	filePath := args[1]
+
+	var testConfig TestConfig
+	var err error
+	if paramFile == paramFileDummy {
+		// default params file to test directory (if not specified)
+		testConfig, err = loadConfigFile(filepath.Dir(filePath) + "/config.yml")
+		// if default config not found, print Warning and continue
+		if err != nil {
+			fmt.Printf("Warning: %s\n", err)
+		}
+	} else {
+		testConfig, err = loadConfigFile(paramFile)
+		// if input config file not found, report error/quit
+		if err != nil {
+			fatal(err)
+		}
+	}
+
+	// combine params in config with CLI input (CLI input has priority)
+	testConfig.addParams(cliParams)
+
 	debug("## Loading " + filePath)
 
-	test, err := readTestFile(filePath)
+	test, err := loadTest(filePath, testConfig)
 	if err != nil {
 		fatal(err)
 	}
@@ -251,14 +339,19 @@ func main() {
 	PrintResults(summary, test)
 }
 
-func readTestFile(filePath string) (Test, error) {
+func loadTest(filePath string, testConfig TestConfig) (Test, error) {
 	var test Test
 	fileData, err := ioutil.ReadFile(filePath)
 	if err != nil {
 		return test, err
 	}
 
-	if err := yaml.Unmarshal([]byte(fileData), &test); err != nil {
+	testData, err := replaceParams(fileData, testConfig.Params)
+	if err != nil {
+		fatal(err)
+	}
+
+	if err := yaml.Unmarshal([]byte(testData), &test); err != nil {
 		return test, err
 	}
 
@@ -701,7 +794,7 @@ func validateSelections(steps []Step, subsetPartition map[int][]int, config Conf
 			return validateError(idx, "Two selection formats")
 		case step.Selection.Subsets != nil:
 			if subsetPartition == nil {
-				return validateError(idx, "Subset specified without specifying partion in header")
+				return validateError(idx, "Subset specified without specifying partition in header")
 			}
 			if len(step.Selection.Subsets) > len(subsetPartition) || max(step.Selection.Subsets) > len(subsetPartition) {
 				return validateError(idx, "Subset specifies too many partitions")

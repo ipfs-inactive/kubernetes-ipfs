@@ -1,0 +1,5 @@
+params:
+    NUM_NODES: 1
+    NUM_TIMES: 10
+    FILE_SIZE: 10
+    ON_NODE:   1
