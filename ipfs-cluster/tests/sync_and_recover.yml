@@ -1,6 +1,6 @@
 name: Pin something in cluster
 config:
-  nodes: 5
+  nodes: {{N}}
   selector: app=ipfs-cluster
   times: 2
   expected:
@@ -28,7 +28,7 @@ steps:
       - line: 0
         should_be_equal_to: "1 pin_error"
       - line: 1
-        should_be_equal_to: "5 pinned"
+        should_be_equal_to: "{{N_minus_1}} pinned"
   - name: running recover fixes the problem
     on_node: 1
     cmd: "ipfs-cluster-ctl --enc json recover $HASH | jq -r '.cid' && sleep 2"
@@ -41,4 +41,4 @@ steps:
         | jq -r '.peer_map | .[].status' | sort | uniq -c | sed 's/^ *//'"
     assertions:
       - line: 0
-        should_be_equal_to: "6 pinned"
+        should_be_equal_to: "{{N}} pinned"

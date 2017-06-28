@@ -1,10 +1,10 @@
-name: Y (for now 2) pins, first half of tests 10 & 11
+name: Remove and add back peers using a single bootstrapper
 config:
-  nodes: {{N}} # param
+  nodes: {{N}}
   selector: app=ipfs-cluster
   times: 1
   expected:
-    successes: 6   # 14 x node number
+    successes: {{Add_Rm_success}}
     failures: 0
     timeouts: 0
   subset_partition:

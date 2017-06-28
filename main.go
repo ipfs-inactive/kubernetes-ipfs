@@ -248,7 +248,7 @@ func loadConfigFile(configPath string) (TestConfig, error) {
 	if err != nil {
 		return newTestConfig(), err
 	}
-
+	
 	return testConfig, nil
 }
 

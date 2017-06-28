@@ -1,10 +1,10 @@
 name: Y (for now 20) pins, block 1/3 of network, then Y unpins then unblock
 config:
-  nodes: 6
+  nodes: {{N}}
   selector: app=ipfs-cluster
   times: 1
   expected:
-    successes: 1
+    successes: {{Block_successes}} # 2Y*N + 3Y
     failures: 0
     timeouts: 0
   subset_partition:
@@ -15,7 +15,7 @@ steps:
   - name: add Y things to ipfs
     for:
       iter_structure: BOUND
-      number: 20 # replace with Y using parameter feature
+      number: {{Y}}
     cmd: "head -c 100 /dev/urandom | base64 | ipfs add -q && sleep 1"
     selection:
       range:
@@ -44,7 +44,7 @@ steps:
       - line: 0
         should_be_equal_to: "pinned"
       - line: 1
-        should_be_equal_to: "6" #Number of nodes (everyone pins)
+        should_be_equal_to: "{{N}}" #Number of nodes (everyone pins)
       - line: 2
         should_be_equal_to: "1"
   - name: block minority of cluster
@@ -70,8 +70,8 @@ steps:
       percent:
         order: RANDOM
         percent: 100
-  - name: wait 10 seconds for everyone to come back
-    cmd: "sleep 10"
+  - name: wait 30 seconds for everyone to come back
+    cmd: "sleep 30"
     on_node: 1
   - name: check that nothing is pinned anywhere anymore
     for:

@@ -1,10 +1,10 @@
 name: Remove peers, pin, add peers back, pins should be everywhere
 config:
-  nodes: 4 # param
+  nodes: {{N}} # param
   selector: app=ipfs-cluster
   times: 1
   expected:
-    successes: 56   # 14 x node number
+    successes: {{Add_Pin_Rm_success}}
     failures: 0
     timeouts: 0
   subset_partition:
@@ -61,7 +61,7 @@ steps:
       - line: 0
         should_be_equal_to: "success"
   - name: remove all peers in the departing group from the bootstrapper
-    on_node: 4 # The last node (always the bootstrapper and always in staying group)
+    on_node: {{N}}
     for:
       iter_structure: DEPART_MHs
     cmd: "ipfs-cluster-ctl peers rm ${DEPART_MHs[%i]}"
@@ -94,7 +94,7 @@ steps:
   - name: add Y items to ipfs in the staying group
     for:
       iter_structure: BOUND
-      number: 4 # replace with Y (number of files to pin) using parameter feature
+      number: {{Y}}
     cmd: "head -c 100 /dev/urandom | base64 | ipfs add -q && sleep 1"
     selection:
       subset: [2]
@@ -153,7 +153,7 @@ steps:
   - name: add back all departed peers from the bootstrapper
     for:
       iter_structure: ADDR
-    on_node: 4 # the last node is the bootstrapper
+    on_node: {{N}}
     cmd: "sleep 20; ipfs-cluster-ctl peers add ${ADDR[%i]}"
   - name: ensure all peers see the peers that always stayed in cluster
     for:
@@ -197,6 +197,6 @@ steps:
       - line: 0
         should_be_equal_to: "pinned"
       - line: 1
-        should_be_equal_to: "4" #Number of nodes (Rep factor of 4 (all nodes) by default)
+        should_be_equal_to: "{{N}}" #Number of nodes (Rep factor of 4 (all nodes) by default)
       - line: 2
         should_be_equal_to: "1" #No unpins no errors!

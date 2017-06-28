@@ -1,10 +1,10 @@
 name: Check that all cluster peers know each others
 config:
-  nodes: 5
+  nodes: {{N}}
   selector: app=ipfs-cluster
   times: 1
   expected:
-      successes: 5
+      successes: {{N}}
       failures: 0
       timeouts: 0
 steps:
@@ -18,7 +18,7 @@ steps:
       save_to: PIDS
   - name: Check that nodes match
     on_node: 1
-    end_node: 5
+    end_node: {{N}}
     cmd: "ipfs-cluster-ctl --enc json peers ls | jq -r '.[].id' | sort
         | tr '\n' ' '"
     assertions:
