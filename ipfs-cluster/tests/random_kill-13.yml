@@ -1,4 +1,4 @@
-name: Background random process stops and restarts
+name: Background random process kills and restarts cluster daemon while pinning
 config:
   nodes: {{N}}
   selector: app=ipfs-cluster

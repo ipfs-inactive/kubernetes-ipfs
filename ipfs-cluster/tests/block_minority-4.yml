@@ -1,4 +1,4 @@
-name: Y (for now 20) pins, block 1/3 of network, then Y unpins then unblock
+name: Make Y pins, block 1/3 of network, then make Y unpins then unblock
 config:
   nodes: {{N}}
   selector: app=ipfs-cluster

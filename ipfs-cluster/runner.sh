@@ -22,7 +22,7 @@ fi
 go install ..
 
 # Set the number of nodes in the deployment
-NONBOOTSTRAP=`expr $1 - 1`
+NONBOOTSTRAP=$(( $1 - 1 ))
 echo "51s/.*.*/  replicas: "$NONBOOTSTRAP"/" > sed-command.txt
 sed -f sed-command.txt -i ipfs-cluster-deployment.yml
 rm sed-command.txt
@@ -45,22 +45,6 @@ FILE_NAMES=("block_majority-5.yml"
             "add_rm_peers_rand_bootstrapper-11.yml"
             "add_rm_peers_pin-14.yml")
 
-CLI_ARGS=(  ""
-            ""
-            ""
-            ""
-            ""
-            ""
-            ""
-            ""
-            ""
-            ""
-            ""
-            ""
-            ""
-            ""
-            "")
 for i in "${!FILE_NAMES[@]}"; do
   kubernetes-ipfs "tests/"${FILE_NAMES[$i]}
-  #" "${CLI_ARGS[$i]}
 done

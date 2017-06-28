@@ -30,9 +30,6 @@ while true; do
 done
 
 sleep 5
-if [[ $1 == "quick" ]]; then
-    exit 0;
-fi
 
 echo
 echo "Adding peers to cluster"

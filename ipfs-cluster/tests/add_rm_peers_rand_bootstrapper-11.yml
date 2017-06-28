@@ -1,4 +1,4 @@
-name: Y (for now 2) pins, first half of tests 10 & 11
+name: Remove and add back peers using random nodes in the cluster
 config:
   nodes: {{N}} # param
   selector: app=ipfs-cluster

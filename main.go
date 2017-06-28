@@ -248,7 +248,7 @@ func loadConfigFile(configPath string) (TestConfig, error) {
 	if err != nil {
 		return newTestConfig(), err
 	}
-	
+
 	return testConfig, nil
 }
 
@@ -445,7 +445,6 @@ func getSubsetBounds(subset int, numSubsets int, numNodes int) (int, int) {
 	return startNode, endNode
 }
 
-
 func getStepIterations(step Step, envArrays map[string][]string) int {
 	/* Determine number of iterations */
 	var numIters int
@@ -468,7 +467,6 @@ func handleStep(pods GetPodsOutput, step *Step, summary *Summary, env []string, 
 	}
 	color.Magenta("$ %s", step.CMD)
 	numNodes := len(nodeIndices)
-  //fmt.Printf("EnvArrays: %v\n", envArrays)
 	/* Find all array variables used and add to environment */
 
 	r, _ := regexp.Compile("([a-zA-Z_][a-zA-Z0-9_]*)\\[(%s|%i)\\]")
@@ -506,10 +504,7 @@ func handleStep(pods GetPodsOutput, step *Step, summary *Summary, env []string, 
 	// Iterate through the queue to pull out results one-by-one
 	// These may be out of order, but is there a better way to do this? Do we need them in order?
 	for j := 0; j < numNodes; j++ {
-
 		out := <-outputStrings
-		//fmt.Printf("The output strings coming from the channel: %v\n", out)
-
 		err := <-outputErr
 		if err {
 			summary.Timeouts++
@@ -649,9 +644,6 @@ func scaleTo(cfg *Config) error {
 func runInPodAsync(name string, cmdToRun string, env []string, timeout int, chanStrings chan []string, chanTimeout chan bool) {
 	go func() {
 		var lines []string
-		// defer func() {
-		// 	chanStrings <- lines
-		// }()
 		envString := ""
 		for _, e := range env {
 			envString += e + " "
@@ -660,7 +652,6 @@ func runInPodAsync(name string, cmdToRun string, env []string, timeout int, chan
 			envString = envString + "&& "
 		}
 		cmd := exec.Command("kubectl", "exec", name, "-t", "--", "bash", "-c", envString+cmdToRun)
-		//fmt.Printf("The kubectl command: %s\n", cmd)
 		var out bytes.Buffer
 		var errout bytes.Buffer
 		cmd.Stdout = &out
@@ -687,14 +678,9 @@ func runInPodAsync(name string, cmdToRun string, env []string, timeout int, chan
 			fmt.Println(errout.String())
 		}
 		lines = strings.Split(out.String(), "\n")
-		//fmt.Printf("Lines being fed into channel %v", lines)
 		// Feed our output into the channel.
-		//fmt.Println(name, "Waiting on chan_line")
 		chanStrings <- lines
-		//fmt.Println(name, "Waiting on chan_timeout")
 		chanTimeout <- timeout_reached
-		//fmt.Println(name, "GoRoutine Complete")
-
 	}()
 }
 
