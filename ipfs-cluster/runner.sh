@@ -29,10 +29,7 @@ rm sed-command.txt
 ./init.sh
 ./config-writer.sh $1 $2
 
-#"add_rm_peers_pin-14.yml"
-FILE_NAMES=("add_rm_peers-10.yml"
-            "add_rm_peers_rand_bootstrapper-11.yml"
-            "block_majority-5.yml"
+FILE_NAMES=("block_majority-5.yml"
             "block_minority-4.yml"
             "pin_and_unpin.yml"
             "pin_everywhere.yml"
@@ -43,7 +40,10 @@ FILE_NAMES=("add_rm_peers-10.yml"
             "replication_self_heal-6.yml"
             "replication_update.yml"
             "start_and_check.yml"
-            "sync_and_recover.yml")
+            "sync_and_recover.yml"
+            "add_rm_peers-10.yml"
+            "add_rm_peers_rand_bootstrapper-11.yml"
+            "add_rm_peers_pin-14.yml")
 
 CLI_ARGS=(  ""
             ""
