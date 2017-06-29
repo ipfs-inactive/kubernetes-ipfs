@@ -23,14 +23,29 @@ go install ..
 
 # Set the number of nodes in the deployment
 NONBOOTSTRAP=$(( $1 - 1 ))
-echo "51s/.*.*/  replicas: "$NONBOOTSTRAP"/" > sed-command.txt
-sed -f sed-command.txt -i ipfs-cluster-deployment.yml
-rm sed-command.txt
+awk '
+BEGIN {x=0}
+{ if (match($0, /replicas:/)) {
+    ++x;
+    if (x==2) {
+      printf("  replicas: ");
+      print '$NONBOOTSTRAP'
+    } else {
+      print
+    }
+  } else {
+    print
+  }
+} ' ipfs-cluster-deployment.yml > tmp-ipfs-cluster-deployment.yml
+rm ipfs-cluster-deployment.yml
+mv tmp-ipfs-cluster-deployment.yml ipfs-cluster-deployment.yml
+
 ./init.sh
 ./config-writer.sh $1 $2
 
-FILE_NAMES=$(find ./tests -not -name "config.yml" -name "*.yml")
+FILE_NAMES=$(find tests -not -name "config.yml" -name "*.yml")
 
-for file in "$FILE_NAMES"; do
+for file in $FILE_NAMES; do
+  echo $file
   kubernetes-ipfs $file
 done

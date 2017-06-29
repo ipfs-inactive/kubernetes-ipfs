@@ -17,7 +17,7 @@ steps:
     cmd: "ipfs-cluster-ctl pin add -r 3 $HASH && sleep 1"
   - name: wait for pinning
     on_node: 1
-    cmd: "sleep 10"
+    cmd: "sleep 20"
   - name: check that it is only replicated in 3 nodes
     on_node: 1
     end_node: {{N}}
