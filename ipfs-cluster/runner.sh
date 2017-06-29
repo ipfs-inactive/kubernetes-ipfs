@@ -29,22 +29,8 @@ rm sed-command.txt
 ./init.sh
 ./config-writer.sh $1 $2
 
-FILE_NAMES=("block_majority-5.yml"
-            "block_minority-4.yml"
-            "pin_and_unpin.yml"
-            "pin_everywhere.yml"
-            "pin_large_files-8.yml"
-            "random_kill-13.yml"
-            "random_reap-12.yml"
-            "replication_factor.yml"
-            "replication_self_heal-6.yml"
-            "replication_update.yml"
-            "start_and_check.yml"
-            "sync_and_recover.yml"
-            "add_rm_peers-10.yml"
-            "add_rm_peers_rand_bootstrapper-11.yml"
-            "add_rm_peers_pin-14.yml")
+FILE_NAMES=$(find ./tests -not -name "config.yml" -name "*.yml")
 
-for i in "${!FILE_NAMES[@]}"; do
-  kubernetes-ipfs "tests/"${FILE_NAMES[$i]}
+for file in "$FILE_NAMES"; do
+  kubernetes-ipfs $file
 done
