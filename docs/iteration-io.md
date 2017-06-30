@@ -1,4 +1,4 @@
-##Iteration and Array IO Specification
+###Iteration and Array IO Specification
 
 This DSL feature specifies that a command should be run for a given number of 
 iterations.  These iterations can be bounded by an integer or correspond to the
@@ -55,7 +55,7 @@ cmd: head -c 10 /dev/urandom | base64 | ipfs add -q
 outputs:
  - line: 0
    append_to: HASH
-`
+```
 
 Ex2 -- for structure over length of variable array
 ```
@@ -66,10 +66,10 @@ Ex2 -- for structure over length of variable array
  for: 
   iter_structure: "HASH"
  cmd: ipfs-cluster-ctl pin add ${HASH[%i]}
-`
+```
 
 Ex3 -- using default %s index to reference node this is being run on
-`
+```
 - steps:
  name: Get cluster node ids
  selection:
@@ -92,4 +92,4 @@ Ex3 -- using default %s index to reference node this is being run on
    line: 0
    should_be_equal_to: "0"
 
-`
+```
