@@ -11,21 +11,21 @@ Select nodes by range
       - Similar to on_node / end_node when specified sequentially
       - When specified randomly choose a number of random nodes
       **Example 1: run a command on nodes 1 through 10 inclusive **
-```
-      selection:
+
+``` selection:
         range:
           order: SEQUENTIAL
           start: 1
           end: 10
-``
+```
 
       **Example 2: run a command on 5 random nodes **
-```
-      selection:
+
+```selection:
         range:
           order: RANDOM
           number: 5
-``
+```
 # Percents 
 Select nodes by percent
       - specify order = {SEQUENTIAL, RANDOM}
@@ -39,21 +39,21 @@ Select nodes by percent
 
       **Example 3: run a command on a range of nodes equal to 30 percent
         of the total nodes and starting on the second node **
-```
-      selection:
+
+```selection:
         percent: 
           order: SEQUENTIAL
           start: 2 
           percent: 30
-``
+```
 
       **Example 4: run a command on 55 percent of randomly indexed nodes **
-```
-      selection:
+
+```selection:
         percent: 
           order: RANDOM
           percent: 55
-``
+```
 
 
 # Subset specification and usage
@@ -71,21 +71,21 @@ Select nodes by percent
         **Example 5: Break the nodes into 3 subsets of different weights in 
           order.  The first 10% of nodes go to subset 1, the following 5% of 
           nodes go to subset 2, the final 85% of nodes go to subset 3 **
-```
-  config:
+
+```config:
    ...
      subset_partion:
        partition_type: WEIGHTED
        order: SEQUENTIAL
        percents: [10, 5, 85]
    ...
-``
+```
 
         **Example 6: Break the nodes into 8 even partitions with randomly 
           chosen node indexes **
 
-```
-  config:
+
+```config:
    ...
      subset_partion:
        partition_type: EVEN
@@ -93,7 +93,7 @@ Select nodes by percent
        number_partitions: 8
    ...
 
-``
+```
         - Of course you could pair EVEN with SEQUENTIAL and WEIGHTED with RANDOM
           too
         - Now to specify that a range or percent selection should be taken with 
@@ -102,20 +102,20 @@ Select nodes by percent
 
         **Example 7: Run a command on 10 random nodes of the 3rd partition and 10
           random nodes of the 4th partition **
-```
- selection:
+
+```selection:
      subset: [3,4]
      range:
          order: RANDOM
          number: 10
 
-``
+```
 
 
         **Example 8: Run a command on 50 percent of the nodes on the 2nd partition
           starting from the 1st node of the 2nd partition **
-```
- selection: 
+
+```selection: 
      subset: [2]
      percent:
          order: SEQUENTIAL
