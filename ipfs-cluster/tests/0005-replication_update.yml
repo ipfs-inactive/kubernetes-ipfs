@@ -1,10 +1,10 @@
 name: Change replication factor of items
 config:
-  nodes: 5
+  nodes: {{N}}
   selector: app=ipfs-cluster
   times: 1
   expected:
-    successes: 22
+      successes: {{N_times_4_plus_2}}
 steps:
   - name: add random stuff to ipfs
     on_node: 1
@@ -18,29 +18,35 @@ steps:
   - name: change replication factor to 1
     on_node: 2
     cmd: "ipfs-cluster-ctl pin add -r 1 $HASH && sleep 1"
+  - name: sleep to let change propagate
+    on_node: 1
+    cmd: "sleep 20"
   - name: check that it is only replicated in 1 node
     on_node: 1
-    end_node: 5
+    end_node: {{N}}
     cmd: "ipfs-cluster-ctl --enc json status $HASH
         | jq -r '.peer_map | .[].status' | sort | uniq -c | sed 's/^ *//'"
     assertions:
       - line: 0
         should_be_equal_to: "1 pinned"
       - line: 1
-        should_be_equal_to: "5 remote"
+        should_be_equal_to: "{{N_minus_1}} remote"
   - name: change replication factor to 3
     on_node: 2
     cmd: "ipfs-cluster-ctl pin add -r 3 $HASH && sleep 1"
+  - name: sleep to let change propagate
+    on_node: 1
+    cmd: "sleep 10"
   - name: check that it is only replicated in 3 node
     on_node: 1
-    end_node: 5
+    end_node: {{N}}
     cmd: "ipfs-cluster-ctl --enc json status $HASH
         | jq -r '.peer_map | .[].status' | sort | uniq -c | sed 's/^ *//'"
     assertions:
       - line: 0
         should_be_equal_to: "3 pinned"
       - line: 1
-        should_be_equal_to: "3 remote"
+        should_be_equal_to: "{{N_minus_3}} remote"
   - name: change replication to 100000 and expect error
     on_node: 1
     cmd: "ipfs-cluster-ctl --enc json pin add -r 1000000 $HASH | jq .code"
@@ -50,10 +56,13 @@ steps:
   - name: change replication to -1
     on_node: 3
     cmd: "ipfs-cluster-ctl pin add -r -1 $HASH"
+  - name: sleep to let change propagate
+    on_node: 1
+    cmd: "sleep 10"
   - name: check that it is pinned everywhere
     on_node: 1
     cmd: "ipfs-cluster-ctl --enc json status $HASH
         | jq -r '.peer_map | .[].status' | sort | uniq -c | sed 's/^ *//'"
     assertions:
       - line: 0
-        should_be_equal_to: "6 pinned"
+        should_be_equal_to: "{{N}} pinned"

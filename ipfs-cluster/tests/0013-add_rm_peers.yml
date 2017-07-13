@@ -1,0 +1,157 @@
+name: Remove and add back peers using a single bootstrapper
+config:
+  nodes: {{N}}
+  selector: app=ipfs-cluster
+  times: 1
+  expected:
+    successes: {{Add_Rm_success}}
+    failures: 0
+    timeouts: 0
+  subset_partition:
+    partition_type: WEIGHTED
+    order: SEQUENTIAL
+    percents: [50, 50]  # [departing group, staying group]
+steps:
+  - name: record peer multihashes of departing group
+    selection:
+      subset: [1]
+      percent:
+        order: SEQUENTIAL
+        start: 1
+        percent: 100
+    cmd: "ipfs-cluster-ctl --enc json id | jq -r .id"
+    outputs:
+    - line: 0
+      append_to: DEPART_MHs
+  - name: record peer multihashes of staying group
+    selection:
+      subset: [2]
+      percent:
+        order: SEQUENTIAL
+        start: 1
+        percent: 100
+    cmd: "ipfs-cluster-ctl --enc json id | jq -r .id"
+    outputs:
+    - line: 0
+      append_to: STAY_MHs
+  - name: ensure all peers see all staying peers to begin
+    for:
+      iter_structure: STAY_MHs
+    selection:
+      percent:
+        order: SEQUENTIAL
+        start: 1
+        percent: 100
+    cmd: "ipfs-cluster-ctl --enc json peers ls | jq -r .[].id > /tmp/peer-list &&
+        grep -q ${STAY_MHs[%i]} /tmp/peer-list && echo 'success'"
+    assertions:
+      - line: 0
+        should_be_equal_to: "success"
+  - name: ensure all peers see all departing peers to begin
+    for:
+      iter_structure: DEPART_MHs
+    selection:
+      percent:
+        order: SEQUENTIAL
+        start: 1
+        percent: 100
+    cmd: "ipfs-cluster-ctl --enc json peers ls | jq -r .[].id > /tmp/peer-list &&
+        grep -q ${DEPART_MHs[%i]} /tmp/peer-list && echo 'success'"
+    assertions:
+      - line: 0
+        should_be_equal_to: "success"
+  - name: remove all peers in the departing group from the bootstrapper
+    on_node: {{N}} # The last node (always the bootstrapper and always in staying group)
+    for:
+      iter_structure: DEPART_MHs
+    cmd: "ipfs-cluster-ctl peers rm ${DEPART_MHs[%i]}"
+  - name: ensure all departing peers know they are removed
+    selection:
+      subset: [1]
+      percent:
+        order: SEQUENTIAL
+        start: 1
+        percent: 100
+    cmd: "sleep 20; if [[ $(ipfs-cluster-ctl id 2>&1) = *error* ]]; then echo 'success';
+         else ipfs-cluster-ctl id; fi"
+    assertions:
+      - line: 0
+        should_be_equal_to: "success"
+  - name: ensure all staying peers correctly see the departures
+    for:
+      iter_structure: DEPART_MHs
+    selection:
+      subset: [2]
+      percent:
+        order: SEQUENTIAL
+        start: 1
+        percent: 100
+    cmd: "ipfs-cluster-ctl --enc json peers ls | jq -r .[].id > /tmp/peer-list;
+        grep -q ${DEPART_MHs[%i]} /tmp/peer-list || echo 'not present'"
+    assertions:
+      - line: 0
+        should_be_equal_to: "not present"
+
+  - name: restart cluster in departed group
+    selection:
+      subset: [1]
+      percent:
+        order: SEQUENTIAL
+        start: 1
+        percent: 100
+    cmd: "RESTART_PID=$(cat /data/ipfs-cluster/cluster-restart-pid);
+        kill -CONT $RESTART_PID; sleep 15; kill -STOP $RESTART_PID"
+  - name: record peer addresses of peers that will need to be readded
+    selection:
+      subset: [1]
+      percent:
+        order: SEQUENTIAL
+        start: 1
+        percent: 100
+    cmd: "sleep 10; echo -n '/ip4/'; echo -n $(hostname -i); echo -n '/tcp/9096/ipfs/';
+        echo -n $(ipfs-cluster-ctl --enc json id | jq -r .id)"
+    outputs:
+    - line: 0
+      append_to: ADDR
+  - name: record new peer multihashes of departed group
+    selection:
+      subset: [1]
+      percent:
+        order: SEQUENTIAL
+        start: 1
+        percent: 100
+    cmd: "ipfs-cluster-ctl --enc json id | jq -r .id"
+    outputs:
+    - line: 0
+      append_to: DEPART_NEW_MHs
+  - name: add back all departed peers from the bootstrapper
+    for:
+      iter_structure: ADDR
+    on_node: {{N}} # the last node is the bootstrapper
+    cmd: "sleep 20; ipfs-cluster-ctl peers add ${ADDR[%i]}"
+  - name: ensure all peers see the peers that always stayed in cluster
+    for:
+      iter_structure: STAY_MHs
+    selection:
+      percent:
+        order: SEQUENTIAL
+        start: 1
+        percent: 100
+    cmd: "ipfs-cluster-ctl --enc json peers ls | jq -r .[].id > /tmp/peer-list &&
+        grep -q ${STAY_MHs[%i]} /tmp/peer-list && echo 'success' "
+    assertions:
+      - line: 0
+        should_be_equal_to: "success"
+  - name: ensure all peers see the peers that departed
+    for:
+      iter_structure: DEPART_NEW_MHs
+    selection:
+      percent:
+        order: SEQUENTIAL
+        start: 1
+        percent: 100
+    cmd: "ipfs-cluster-ctl --enc json peers ls | jq -r .[].id > /tmp/peer-list &&
+        grep -q ${DEPART_NEW_MHs[%i]} /tmp/peer-list && echo 'success' "
+    assertions:
+      - line: 0
+        should_be_equal_to: "success"

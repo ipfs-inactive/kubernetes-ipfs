@@ -1,10 +1,10 @@
 name: Pin something in cluster
 config:
-  nodes: 5
+  nodes: {{N}}
   selector: app=ipfs-cluster
   times: 5
   expected:
-      successes: 50 # 5 nodes * 5 times * 2 assertions
+      successes: {{N_times_10}} # N nodes * 5 times * 2 assertions
       failures: 0
       timeouts: 0
 steps:
@@ -19,7 +19,7 @@ steps:
     cmd: "ipfs-cluster-ctl pin add $HASH && sleep 2"
   - name: check that everyone has the pin
     on_node: 1
-    end_node: 5
+    end_node: {{N}}
     cmd: "ipfs-cluster-ctl --enc json status $HASH
         | jq -r '.peer_map | .[].status' | sort | uniq
         | tee /tmp/file.txt && cat /tmp/file.txt | wc -l"

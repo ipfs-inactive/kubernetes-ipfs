@@ -15,7 +15,7 @@ echo
 echo "Waiting for all containers to be running"
 
 while true; do
-    sleep 1
+    sleep 10
     statuses=`kubectl get pods -l 'app=ipfs-cluster' -o jsonpath='{.items[*].status.phase}' | xargs -n1`
     echo $statuses
     all_running="yes"
@@ -41,11 +41,15 @@ for p in $pods; do
     kubectl exec $bootstrapper -- ipfs-cluster-ctl peers add "$addr"
 done
 
+# Write the correct number of pods to config.yml and used default number of pins = 3
+nodes=$(( ${#pods[@]} + 1 ))
+./config-writer.sh $nodes 3
+
 set +ex
 echo
 echo "To access Grafana for viewing metrics gathered by Prometheus, run the following commands:"
 echo
 echo $'pod=$(kubectl get pods --namespace=monitoring | grep grafana-core | awk \'{print $1}\')'
 echo 'kubectl port-forward --namespace=monitoring $pod 3000:3000'
-echo 
+echo
 echo "Then navigate to localhost:3000 in your browser."

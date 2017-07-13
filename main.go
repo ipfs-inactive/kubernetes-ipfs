@@ -467,7 +467,6 @@ func handleStep(pods GetPodsOutput, step *Step, summary *Summary, env []string, 
 	}
 	color.Magenta("$ %s", step.CMD)
 	numNodes := len(nodeIndices)
-
 	/* Find all array variables used and add to environment */
 
 	r, _ := regexp.Compile("([a-zA-Z_][a-zA-Z0-9_]*)\\[(%s|%i)\\]")
@@ -494,8 +493,8 @@ func handleStep(pods GetPodsOutput, step *Step, summary *Summary, env []string, 
 	r2, _ := regexp.Compile("\\[%i\\]")
 
 	// Initialize a channel with depth of number of nodes we're testing on simultaneously
-	outputStrings := make(chan []string, numNodes)
-	outputErr := make(chan bool, numNodes)
+	outputStrings := make(chan []string)
+	outputErr := make(chan bool)
 	for _, idx := range nodeIndices {
 		command := r1.ReplaceAllString(step.CMD, "["+strconv.Itoa(idx-1)+"]")
 		command = r2.ReplaceAllString(command, "["+strconv.Itoa(iter)+"]")
@@ -645,9 +644,6 @@ func scaleTo(cfg *Config) error {
 func runInPodAsync(name string, cmdToRun string, env []string, timeout int, chanStrings chan []string, chanTimeout chan bool) {
 	go func() {
 		var lines []string
-		defer func() {
-			chanStrings <- lines
-		}()
 		envString := ""
 		for _, e := range env {
 			envString += e + " "
@@ -688,43 +684,7 @@ func runInPodAsync(name string, cmdToRun string, env []string, timeout int, chan
 	}()
 }
 
-func runInPod(name string, cmdToRun string, env []string, timeout int) ([]string, bool) {
-	envString := ""
-	for _, e := range env {
-		envString += e + " "
-	}
-	if envString != "" {
-		envString = envString + "&& "
-	}
-	cmd := exec.Command("kubectl", "exec", name, "-t", "--", "bash", "-c", envString+cmdToRun)
-	var out bytes.Buffer
-	var errout bytes.Buffer
-	cmd.Stdout = &out
-	cmd.Stderr = &errout
-	cmd.Start()
-	timeout_reached := false
 
-	// Handle timeouts
-	if timeout != 0 {
-		timer := time.AfterFunc(time.Duration(timeout)*time.Second, func() {
-			cmd.Process.Kill()
-			timeout_reached = true
-			color.Set(color.FgRed)
-			fmt.Println("Command timed out after", timeout, "seconds")
-			color.Unset()
-		})
-		cmd.Wait()
-		timer.Stop()
-	} else {
-		cmd.Wait()
-	}
-
-	if errout.String() != "" {
-		fmt.Println(errout.String())
-	}
-	lines := strings.Split(out.String(), "\n")
-	return lines[:len(lines)-1], timeout_reached
-}
 
 func selectNodes(step Step, config Config, subsetPartition map[int][]int) []int {
 	var nodes []int

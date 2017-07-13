@@ -1,10 +1,10 @@
 name: Pin with replication factor
 config:
-  nodes: 5
+  nodes: {{N}}
   selector: app=ipfs-cluster
-  times: 10
+  times: 2
   expected:
-    successes: 100
+    successes: {{N_times_4}}
 steps:
   - name: add random stuff to ipfs
     on_node: 1
@@ -15,13 +15,16 @@ steps:
   - name: add to ipfs cluster with replication factor 3
     on_node: 1
     cmd: "ipfs-cluster-ctl pin add -r 3 $HASH && sleep 1"
+  - name: wait for pinning
+    on_node: 1
+    cmd: "sleep 20"
   - name: check that it is only replicated in 3 nodes
     on_node: 1
-    end_node: 5
+    end_node: {{N}}
     cmd: "ipfs-cluster-ctl --enc json status $HASH
         | jq -r '.peer_map | .[].status' | sort | uniq -c | sed 's/^ *//'"
     assertions:
       - line: 0
         should_be_equal_to: "3 pinned"
       - line: 1
-        should_be_equal_to: "3 remote"
+        should_be_equal_to: "{{N_minus_3}} remote"
