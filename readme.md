@@ -15,7 +15,7 @@ With Minikube
 Running tests
 -------------
 
-`go run main.go tests/simple-add-and-cat.yml` 
+`go run main.go tests/simple-add-and-cat.yml`
 
 The go application returns `0` when expectations were met, `1` when they failed
 
@@ -106,6 +106,10 @@ Each step contains a few flags that specify how they will be run, and a `cmd` wh
 -   on_node: On which node number should we run this test?
 -   end_node: When specified, we will run this test in parallel from on_node
     to end_node inclusive. Useful for testing simultaneous group interactions.
+-   selection: An alternate way to choose the nodes that run a command.  Allows
+    for specifying ranges, percents and consistent subsets succinctly
+-   for: An optional way to specify that a step be ran more than once.  Can
+    specify an iteration bound or a for each style iteration over an input array
 -   outputs: Specify a line number of output and what environment variable to
     save it to. It can be used for the following input section
 -   inputs: Specify the environment variables to take in for this command.
