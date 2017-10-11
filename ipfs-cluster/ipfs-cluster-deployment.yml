@@ -18,7 +18,7 @@ spec:
     spec:
       containers:
       - name: ipfs-cluster-bootstrapper
-        image: "hsanjuan/ipfs-cluster:latest"
+        image: "ipfs/ipfs-cluster-test:latest"
         command: ["/usr/local/bin/start-daemons.sh"]
         ports:
         - containerPort: 4001
@@ -57,7 +57,7 @@ spec:
     spec:
       containers:
       - name: ipfs-cluster
-        image: "hsanjuan/ipfs-cluster:latest"
+        image: "ipfs/ipfs-cluster-test:latest"
         command: ["/usr/local/bin/start-daemons.sh"]
         ports:
         - containerPort: 4001
