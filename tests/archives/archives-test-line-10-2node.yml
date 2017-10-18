@@ -1,0 +1,28 @@
+name: Archives test Line 10 - 2 Nodes
+config:
+  nodes: 2
+  times: 3
+  expected:
+      successes: 0
+      failures: 0
+      timeouts: 0
+steps:
+  - name: Add files
+    on_node: 1
+    cmd: ipfs add -q -r /archives-data/line_10/
+    timeout: 3600
+    outputs: 
+    - line: 0
+      save_to: HASH
+  - name: Cat added file
+    on_node: 2
+    inputs:
+      - HASH
+    cmd: for file in $(ipfs ls $HASH | cut -d " " -f 1); do ipfs cat $file; done;
+    timeout: 3600
+  - name: Run GC
+    on_node: 1
+    cmd: ipfs repo gc
+  - name: Run GC
+    on_node: 2
+    cmd: ipfs repo gc
