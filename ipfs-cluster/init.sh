@@ -41,10 +41,6 @@ for p in $pods; do
     kubectl exec $bootstrapper -- ipfs-cluster-ctl peers add "$addr"
 done
 
-# Write the correct number of pods to config.yml and used default number of pins = 3
-nodes=$(( ${#pods[@]} + 1 ))
-./config-writer.sh $nodes 3
-
 set +ex
 echo
 echo "To access Grafana for viewing metrics gathered by Prometheus, run the following commands:"

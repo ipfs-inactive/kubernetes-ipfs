@@ -20,7 +20,7 @@ steps:
     cmd: "ipfs-cluster-ctl pin add -r 1 $HASH && sleep 1"
   - name: sleep to let change propagate
     on_node: 1
-    cmd: "sleep 20"
+    cmd: "sleep 30"
   - name: check that it is only replicated in 1 node
     on_node: 1
     end_node: {{N}}
@@ -36,7 +36,7 @@ steps:
     cmd: "ipfs-cluster-ctl pin add -r 3 $HASH && sleep 1"
   - name: sleep to let change propagate
     on_node: 1
-    cmd: "sleep 10"
+    cmd: "sleep 30"
   - name: check that it is only replicated in 3 node
     on_node: 1
     end_node: {{N}}
