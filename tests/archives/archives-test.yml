@@ -1,4 +1,4 @@
-name: Archives test Line 17 - 2 Nodes
+name: Archives test Line {{LINE_NO}} - 2 Nodes
 config:
   nodes: 2
   times: 3
@@ -9,7 +9,7 @@ config:
 steps:
   - name: Add files
     on_node: 1
-    cmd: ipfs add -q -r /archives-data/line_17/
+    cmd: ipfs add -q -r /archives-data/line_{{LINE_NO}}/
     timeout: 3600
     outputs: 
     - line: 0
