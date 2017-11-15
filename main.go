@@ -459,10 +459,10 @@ func getStepIterations(step Step, envArrays map[string][]string) int {
 }
 
 func handleStep(pods GetPodsOutput, step *Step, summary *Summary, env []string, envArrays map[string][]string, nodeIndices []int, iter int) ([]string, map[string][]string) {
-	color.Blue("### Running step %s on nodes %v", step.Name, nodeIndices)
+	color.Cyan("### Running step %s on nodes %v", step.Name, nodeIndices)
 	if len(step.Inputs) != 0 {
 		for _, input := range step.Inputs {
-			color.Blue("### Getting variable " + input)
+			color.Cyan("### Getting variable " + input)
 		}
 	}
 	color.Magenta("$ %s", step.CMD)
