@@ -47,7 +47,7 @@ steps:
       - line: 1
         should_be_equal_to: "  Code: 500"
       - line: 2
-        should_be_equal_to: "  Message: context deadline exceeded"
+        should_be_equal_to: "  Message: timed out waiting for leader: context deadline exceeded"
   - name: restart the stopped cluster daemons
     cmd: "killall -CONT ipfs-cluster-service && sleep 1"
     selection:
