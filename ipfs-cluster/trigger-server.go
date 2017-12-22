@@ -14,6 +14,7 @@ func run(rw http.ResponseWriter, req *http.Request) {
 	out, err := exec.Command("bash", "./runner.sh", "5", "5").Output()
         io_err := ioutil.WriteFile("/tmp/output", out, 0644)
 	fmt.Printf("Wrote output")
+	rw.Write(out)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -26,7 +27,7 @@ func run(rw http.ResponseWriter, req *http.Request) {
 }
 
 func main() {
-    log.Println("Starting")
+    log.Println("Starting on 8082")
     http.HandleFunc("/run", run)
     log.Fatal(http.ListenAndServe(":8082", nil))
     log.Println("Listening")
