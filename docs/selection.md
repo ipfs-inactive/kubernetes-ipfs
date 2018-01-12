@@ -1,4 +1,4 @@
-###Selection Specification
+### Selection Specification
 
 The DSL selection feature chooses nodes on which to run commands.
 In addition to the on_node/end_node option each step can alternatively take
