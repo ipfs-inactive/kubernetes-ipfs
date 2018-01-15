@@ -22,6 +22,8 @@ This can then be verified later to validate the output of a particular command.
 
 The format is for a given `line`, save the output to the named variable `save_to`.
 
+For documentation of the `append_to` feature, see `iteration-io.md`.
+
 ```
 steps:
   - name: Add file
@@ -61,8 +63,8 @@ The format is as follows, using one of the 'inputs' passed to the step.
 
 Once the successes and failures have been talied up across runs for a particular test, the observed value is compared against the `expected` block.
 If the observed value matches, `kubernetes-ipfs` will report that expectations were met, and returns a 0 exit code. If they don't match, it will return
-a non-zero exit code, and state that the expectations were not met. This allows users to short-circut the tests and immediately fail in the event of a test failure
-and to check the results of running a test from external software.
+a non-zero exit code, and state that the expectations were not met. This allows users to short-circut the tests (at the full-test level) and immediately fail 
+in the event of a test failure and to check the results of running a test from external software.
 
 Within the test definition:
 
