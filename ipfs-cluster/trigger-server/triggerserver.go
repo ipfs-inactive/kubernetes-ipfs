@@ -31,7 +31,7 @@ var config TriggerConfig
 var sh = shell.NewShell("localhost:5001")
 
 func run(rw http.ResponseWriter, req *http.Request) {
-    if req.Method != "POST" {
+  if req.Method != "POST" {
         fmt.Fprintf(rw, `Kubernetes-IPFS Trigger Server
 	https://github.com/ipfs/kubernetes-ipfs/
 	`)

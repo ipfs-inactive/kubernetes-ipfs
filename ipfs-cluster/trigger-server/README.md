@@ -1,9 +1,3 @@
-# What is trigger server
-
-The trigger server's purpose is defined in ipfs/ipfs-cluster/issues/244. The goal is to create an endpoint
-which can be triggered remotely and automated to run the tests, obtaining their results.
-
-
 To build RPM/DEB
 ---
 
