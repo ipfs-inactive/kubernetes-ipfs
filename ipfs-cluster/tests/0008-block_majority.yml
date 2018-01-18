@@ -43,7 +43,7 @@ steps:
         number: 1
     assertions:
       - line: 0
-        should_be_equal_to: "An error ocurred:"
+        should_be_equal_to: "An error occurred:"
       - line: 1
         should_be_equal_to: "  Code: 500"
       - line: 2
