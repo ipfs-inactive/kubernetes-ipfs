@@ -1,4 +1,4 @@
-###Iteration and Array IO Specification
+### Iteration and Array IO Specification
 
 This DSL feature specifies that a command should be run for a given number of 
 iterations.  These iterations can be bounded by an integer or correspond to the
