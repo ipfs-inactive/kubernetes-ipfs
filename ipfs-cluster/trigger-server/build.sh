@@ -1,3 +1,10 @@
+#!/bin/bash
+
+DOCKER_FPM_IMAGE_NAME="fpm"
+
+set -e
+set -x
+
 if [ -z $1 ]
 then
 	printf "%s: missing version\n" $0
@@ -6,11 +13,11 @@ then
 	exit 1
 fi
 VERSION=$1
-if [[ ! $(docker images | grep fpm) ]]
+if [[ ! $(docker images --format '{{ .Repository }}' | grep -e "^$DOCKER_FPM_IMAGE_NAME$") ]]
 then
-	docker build -t="fpm" github.com/jordansissel/fpm/
+	docker build -t="$DOCKER_FPM_IMAGE_NAME" .
 fi
 go build triggerserver.go
-docker run -v $(pwd):/data --rm fpm /bin/sh -c "cd /data && fpm -s dir -t rpm -n triggerserver -v $VERSION -p /data/ --deb-no-default-config-files triggerserver=/usr/bin/ triggerserver.service=/usr/lib/systemd/system/"
-docker run -v $(pwd):/data --rm fpm /bin/sh -c "cd /data && fpm -s dir -t deb -n triggerserver -v $VERSION -p /data/ --deb-no-default-config-files triggerserver=/usr/bin/ triggerserver.service=/lib/systemd/system/"
+docker run -v $(pwd):/data --rm $DOCKER_FPM_IMAGE_NAME /bin/sh -c "cd /data && $DOCKER_FPM_IMAGE_NAME -s dir -t rpm -n triggerserver -v $VERSION -p /data/ --deb-no-default-config-files triggerserver=/usr/bin/ triggerserver.service=/usr/lib/systemd/system/"
+docker run -v $(pwd):/data --rm $DOCKER_FPM_IMAGE_NAME /bin/sh -c "cd /data && $DOCKER_FPM_IMAGE_NAME -s dir -t deb -n triggerserver -v $VERSION -p /data/ --deb-no-default-config-files triggerserver=/usr/bin/ triggerserver.service=/lib/systemd/system/"
 rm triggerserver
