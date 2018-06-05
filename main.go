@@ -684,8 +684,6 @@ func runInPodAsync(name string, cmdToRun string, env []string, timeout int, chan
 	}()
 }
 
-
-
 func selectNodes(step Step, config Config, subsetPartition map[int][]int) []int {
 	var nodes []int
 	switch {

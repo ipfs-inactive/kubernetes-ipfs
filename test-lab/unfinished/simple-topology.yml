@@ -30,7 +30,7 @@ steps:
       save_to: HASH
   - name: Get connection info from node 1
     on_node: 1
-    cmd: ipfs id -f "<addrs>" | grep 172.31
+    cmd: ipfs id -f "<addrs>" | grep -E '/ip4/(172\.31|10)\.'
     outputs:
     - line: 0
       save_to: LANADDR_1
@@ -41,7 +41,7 @@ steps:
     cmd: ipfs swarm connect $LANADDR_1
   - name: Get connection info from node 2
     on_node: 2
-    cmd: ipfs id -f "<addrs>" | grep 172.31
+    cmd: ipfs id -f "<addrs>" | grep -E '/ip4/(172\.31|10)\.'
     outputs:
     - line: 0
       save_to: LANADDR_2
