@@ -7,7 +7,7 @@ kubectl create -f ./prometheus-manifests.yml
 
 echo
 echo "Create go-ipfs deployment"
-kubectl create -f ./ipfs-cluster-deployment.yml
+kubectl create -f ./go-ipfs-deployment.yml
 
 sleep 2
 

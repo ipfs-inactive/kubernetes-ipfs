@@ -10,6 +10,7 @@ config:
 steps:
   - name: Create 200MB File
     on_node: 1
+    # TODO(ajm) this test often fails
     cmd: head -c 200000000 /dev/urandom | base64 > /tmp/file.txt && md5sum /tmp/file.txt | cut -d ' ' -f 1 && ipfs add -q /tmp/file.txt
     timeout: 0
     outputs: 

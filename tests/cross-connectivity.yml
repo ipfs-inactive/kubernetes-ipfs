@@ -35,7 +35,11 @@ steps:
       save_to: HASH
   - name: Get connection info from node 2
     on_node: 2
-    cmd: ipfs id -f "<addrs>" | grep 172.31
+    # TODO(ajm): this can be flaky, recommend command run with exponential backoff and max timeout
+    # possible reason: when tests scale up nodes, they do not await pod readiness and
+    #   start running tests before the node has discovered local peers
+    # TODO(ajm): dynamically insert pod-cidr range
+    cmd: ipfs id -f "<addrs>" | grep -E '/ip4/(172\.31|10)\.'
     outputs:
     - line: 0
       save_to: LANADDR
@@ -54,7 +58,7 @@ steps:
     inputs:
       - HASH
     cmd: ipfs cat $HASH | md5sum | cut -d ' ' -f 1
-    timeout: 10
+    timeout: 30
     assertions:
     - line: 0
       should_be_equal_to: FILE
@@ -64,4 +68,4 @@ steps:
     inputs:
       - HASH
     cmd: echo $HASH
-    timeout: 10
+    timeout: 30
